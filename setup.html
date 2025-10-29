@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LWS - Deployment Setup Tool</title>
+    <title>WSA - Deployment Setup Tool</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
@@ -41,7 +41,7 @@
         
         <!-- Header / Step Navigation -->
         <div class="bg-gray-900 p-4 border-b border-gray-700">
-            <h1 class="text-2xl font-bold text-blue-400 text-center">Lone Worker Safety System - Setup Tool</h1>
+            <h1 class="text-2xl font-bold text-blue-400 text-center">Workplace Support App - Setup Tool</h1>
         </div>
         <div class="step-nav flex flex-wrap justify-center bg-gray-700 p-2 shadow-inner">
             <button type="button" id="nav1" onclick="showStep(1)" class="current px-3 py-2 text-sm font-medium rounded-md m-1" disabled>Step 1: Welcome</button>
@@ -55,11 +55,12 @@
         <div class="p-6 md:p-8">
             <!-- Step 1: Welcome -->
             <div id="step1" class="step active">
-                <h2 class="text-xl font-semibold mb-4 text-blue-300">Welcome to the LWS Setup Wizard</h2>
-                <p class="text-gray-300 mb-4">This tool will guide you through creating and customizing your Lone Worker Safety system. It will generate a <strong>`.zip`</strong> file containing the final, ready-to-host applications for your workers and monitors.</p>
+                <h2 class="text-xl font-semibold mb-4 text-blue-300">Welcome to the WSA Setup Wizard</h2>
+                <p class="text-gray-300 mb-4">This tool will guide you through creating and customizing your Workplace Support App (WSA), which combines Lone Worker Safety with Visit Reporting.</p>
                 <p class="text-gray-300 mb-6">We recommend downloading the full documentation PDF before you begin. You can also find this link in the final step.</p>
                 
-                <a href="https://russell-netizen.github.io/LWSS/templates/LWS_Documentation.pdf" download="LWS_Documentation.pdf" class="block w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg text-lg mb-6">
+                <!-- === IMPORTANT: Update this href to your hosted PDF location === -->
+                <a href="https.example.com/WSA_Documentation.pdf" download="WSA_Documentation.pdf" class="block w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg text-lg mb-6">
                     Download Full Documentation (PDF)
                 </a>
                 
@@ -71,15 +72,23 @@
             <div id="step2" class="step">
                 <h2 class="text-xl font-semibold mb-4 text-blue-300">Step 2: Set Up Your Google Sheet</h2>
                  <ol class="list-decimal list-inside text-gray-300 space-y-3 mb-6">
-                    <li>Go to <a href="https://sheets.new" target="_blank" class="text-blue-400 hover:underline"><strong>sheets.new</strong></a> to create a new, blank Google Sheet. Give it a name (e.g., "LWS Data").</li>
-                    <li>Click the button below to copy the required spreadsheet <strong>headers</strong> (they will be copied with tabs between them).</li>
-                    <li>In your new sheet, click <strong>once</strong> on cell <strong>A1</strong>.</li>
-                    <li><strong>Paste</strong> the copied text. The headers should automatically fill row 1 from cell A1 to S1.</li> 
+                    <li>Go to <a href="https://sheets.new" target="_blank" class="text-blue-400 hover:underline"><strong>sheets.new</strong></a> to create a new, blank Google Sheet. Give it a name (e.g., "WSA Data").</li>
+                    <li>The first sheet tab (default named "Sheet1") will be your <strong>`Visits`</strong> log. **Rename this tab to `Visits`**.</li>
+                    <li>In this <strong>`Visits`</strong> sheet, click <strong>once</strong> on cell <strong>A1</strong>.</li>
+                    <li>Click the "Copy Headers" button below and <strong>Paste</strong> the text. The **21 headers** should automatically fill row 1 from cell A1 to U1.</li>
+                    <li class="mt-4"><strong>Create the Checklists Tab:</strong>
+                        <ul class="list-disc list-inside ml-6 mt-2 p-2 bg-gray-700 rounded-md space-y-1">
+                            <li>Click the <strong>`+`</strong> icon at the bottom of the sheet to add a new tab.</li>
+                            <li>Double-click the new tab's name (e.g., "Sheet2") and rename it to **`Checklists`**. (Spelling must be exact).</li>
+                            <li>In this new <strong>`Checklists`</strong> sheet, click cell **A1** and type <strong>`Company Name`</strong>.</li>
+                            <li>In cell **B1**, type <strong>`Question 1`</strong>. In **C1**, type <strong>`Question 2`</strong>, and so on for any custom questions you need to define.</li>
+                        </ul>
+                    </li>
                 </ol>
                 <div class="relative bg-gray-900 rounded-lg p-4 font-mono text-sm text-gray-400 pr-16 mb-4">
                     <button type="button" id="copyHeadersBtn" onclick="copyHeadersTabDelimited(this)" class="copy-btn">Copy Headers</button>
-                    <!-- Display text shows commas, but copied text uses tabs -->
-                    <p id="headersDisplayText" class="overflow-x-auto">Date,Worker Name,Worker Phone Number,Emergency Contact Name,Emergency Contact Number,Emergency Contact Email,Escalation Contact Name,Escalation Contact Number,Escalation Contact Email,Location Name,Location Address,Arrival Time,Anticipated Departure Time,Actual Departure Time,Alarm Status,Notes,Last Known GPS,GPS Timestamp,Battery Level</p> 
+                    <!-- Updated Display Text (21 headers) -->
+                    <p id="headersDisplayText" class="overflow-x-auto">Date,Worker Name,Worker Phone Number,Emergency Contact Name,Emergency Contact Number,Emergency Contact Email,Escalation Contact Name,Escalation Contact Number,Escalation Contact Email,Location Name,Location Address,Company Name,Arrival Time,Anticipated Departure Time,Actual Departure Time,Alarm Status,Visit Report Data,Notes,Last Known GPS,GPS Timestamp,Battery Level</p> 
                 </div>
                 <button type="button" onclick="nextStep()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg">Next Step</button>
             </div>
@@ -90,14 +99,14 @@
                 <ol class="list-decimal list-inside text-gray-300 space-y-3 mb-6">
                     <li>In your Google Sheet, click <strong>`Extensions`</strong> > <strong>`Apps Script`</strong>.</li>
                     <li>Delete any code in the <strong>`Code.gs`</strong> file.</li>
-                    <li><strong>Create a Secret Key:</strong> Enter a strong, private password in the box below. This will be automatically injected into the script code for you.</li>
+                    <li><strong>Create a Secret Key:</strong> Enter a strong, private password in the box below.</li>
                     
                     <div class="mb-4 ml-6"> 
                         <label for="secretKeyStep3" class="block text-sm font-medium text-gray-300">Create a Secret Key</label>
                         <input type="password" id="secretKeyStep3" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Enter a strong, private password">
                     </div>
 
-                    <li>Click the <strong>"Copy Script"</strong> button below. The complete, customized code (with your key included) will be copied to your clipboard.</li>
+                    <li>Click the <strong>"Copy Script"</strong> button below to copy the new backend code (with your key injected).</li>
                     <li><strong>Paste</strong> the copied code into the empty <strong>`Code.gs`</strong> editor.</li>
                     <li>Click the <strong>`Deploy`</strong> button (top right), select <strong>`New deployment`</strong>.
                         <ul class="list-disc list-inside ml-6 mt-2 p-2 bg-gray-700 rounded-md">
@@ -109,7 +118,7 @@
                     </li>
                     <li><strong>Authorize</strong> the script (click "Authorize access", choose your account, click "Advanced", then "Go to... (unsafe)", and "Allow").</li>
                     <li>After deploying, **copy the "Web app URL"**. You will need it in the next step.</li>
-                    <li>Finally, set up the <strong>trigger</strong>:
+                    <li>Set up the <strong>trigger</strong>:
                         <ul class="list-disc list-inside ml-6 mt-2 p-2 bg-gray-700 rounded-md">
                             <li>Click the "Triggers" icon (alarm clock) on the left.</li>
                             <li>Click <strong>`Add Trigger`</strong>.</li>
@@ -128,7 +137,7 @@
             <!-- Step 4: Configure Apps -->
             <div id="step4" class="step">
                 <h2 class="text-xl font-semibold mb-4 text-blue-300">Step 4: Configure Your Applications</h2>
-                <p class="text-gray-300 mb-6">Enter the values you just created. This will inject them into the final app files, removing the need for manual setup by your users.</p>
+                <p class="text-gray-300 mb-6">Enter the values you just created. This will inject them into the final app files.</p>
                 <div class="space-y-4">
                     <div>
                         <label for="scriptUrl" class="block text-sm font-medium text-gray-300">Web App URL</label>
@@ -194,8 +203,8 @@
     const config = {
         secretKey: ""
     };
-    // Updated headers text with tabs AND Battery Level
-    const headersTabDelimited = "Date\tWorker Name\tWorker Phone Number\tEmergency Contact Name\tEmergency Contact Number\tEmergency Contact Email\tEscalation Contact Name\tEscalation Contact Number\tEscalation Contact Email\tLocation Name\tLocation Address\tArrival Time\tAnticipated Departure Time\tActual Departure Time\tAlarm Status\tNotes\tLast Known GPS\tGPS Timestamp\tBattery Level";
+    // === UPDATED Header String (21 columns) ===
+    const headersTabDelimited = "Date\tWorker Name\tWorker Phone Number\tEmergency Contact Name\tEmergency Contact Number\tEmergency Contact Email\tEscalation Contact Name\tEscalation Contact Number\tEscalation Contact Email\tLocation Name\tLocation Address\tCompany Name\tArrival Time\tAnticipated Departure Time\tActual Departure Time\tAlarm Status\tVisit Report Data\tNotes\tLast Known GPS\tGPS Timestamp\tBattery Level";
 
     // --- Template Fetching ---
     window.onload = async () => {
@@ -212,7 +221,6 @@
         };
 
         try {
-             // --- FIXED: Removed .md files from initial fetch list ---
             const templateFiles = [
                 'apps_script_template.txt',
                 'worker_app_template.txt',
@@ -327,6 +335,7 @@
     }
 
     function copyToClipboard(elementId, button) { 
+        // This function is no longer used for headers, but kept for future use.
         const textEl = document.getElementById(elementId);
         if (!textEl || !navigator.clipboard) {
             alert('Clipboard API not available.');
