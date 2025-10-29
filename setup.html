@@ -154,7 +154,7 @@
                         <p class="text-xs text-gray-400 mt-1">Time a worker is overdue before the Worker App sends an 'ALERT SENT' status (and the backend sends <strong>`EMAIL_1_SENT`</strong>). 15 minutes is recommended.</p>
                     </div>
                     <div class="flex items-center">
-                        <input id="enableCheckin" type="checkbox" class="h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500">
+                        <input id="enableCheckin" type="checkbox" class="h-4 w-4 text-blue-600 bg-gray-700 border border-gray-600 rounded focus:ring-blue-500">
                         <label for="enableCheckin" class="ml-2 block text-sm font-medium text-gray-300">Enable "Are You OK?" Check-ins (Optional)</label>
                     </div>
                      <div id="checkinIntervalDiv" class="hidden ml-6"> 
@@ -545,7 +545,8 @@
             workerApp = workerApp.replace(/%%FIRST_ALERT_MINUTES%%/g, firstAlert);
             workerApp = workerApp.replace(/%%CHECKIN_ENABLED%%/g, checkin);
             workerApp = workerApp.replace(/%%CHECKIN_INTERVAL%%/g, checkinInterval);
-            workerApp = workerApp.replace(/https://i\.postimg\.cc\/dVmVg3Pn\/favicon-logo-for-LWSApp\.png/g, logoUrl);
+            // --- FIXED REGEX: Escaped slashes ---
+            workerApp = workerApp.replace(/https:\/\/i\.postimg\.cc\/dVmVg3Pn\/favicon-logo-for-LWSApp\.png/g, logoUrl);
             workerApp = workerApp.replace(/%%GOOGLE_SHEET_URL%%/g, url);
             
             const workerFolder = zip.folder('LoneWorkerApp');
@@ -555,6 +556,7 @@
 
             // --- 2. Process Manifest ---
             let manifest = templates['manifest.json'];
+            // --- FIXED REGEX: Escaped slashes ---
             manifest = manifest.replace(/https:\/\/i\.postimg\.cc\/dVmVg3Pn\/favicon-logo-for-LWSApp\.png/g, logoUrl);
             workerFolder.file('manifest.json', manifest);
 
@@ -565,11 +567,7 @@
             monitorApp = monitorApp.replace(/%%LOGO_URL%%/g, logoUrl); 
             
             // Revert to Option 1: Do NOT inject credentials
-            // monitorApp = monitorApp.replace(/<!-- SETUP_PAGE_START -->.*?<!-- SETUP_PAGE_END -->/s, '');
-            // monitorApp = monitorApp.replace(/<!-- RESET_BUTTON_START -->.*?<!-- RESET_BUTTON_END -->/s, '');
-            // monitorApp = monitorApp.replace('<div id="dashboardPage" class="h-full flex-col hidden">', '<div id="dashboardPage" class="h-full flex flex-col">');
-            // const loginLogic = `...`; 
-            // monitorApp = monitorApp.replace(/<!-- MONITOR_LOGIN_LOGIC_START -->.*?<!-- MONITOR_LOGIN_LOGIC_END -->/s, loginLogic);
+            // ... (All auto-login code is correctly removed from here) ...
             
             const monitorFolder = zip.folder('MonitoringDashboardApp');
              if (!monitorFolder) throw new Error("Could not create monitor folder in zip");
