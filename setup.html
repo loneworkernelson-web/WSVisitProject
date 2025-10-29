@@ -32,7 +32,8 @@
         }
         .copy-btn:hover { background-color: #6b7280; }
         .copy-btn.copied { background-color: #10b981; }
-        strong { color: #60a5fa; font-weight: 600; }
+        /* Style for bolding key terms */
+        strong { color: #60a5fa; /* A lighter blue for emphasis */ font-weight: 600; }
     </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen p-4 md:p-8">
@@ -40,7 +41,7 @@
         
         <!-- Header / Step Navigation -->
         <div class="bg-gray-900 p-4 border-b border-gray-700">
-            <h1 class="text-2xl font-bold text-blue-400 text-center">Workplace Support App - Setup Tool</h1>
+            <h1 class="text-2xl font-bold text-blue-400 text-center">Lone Worker Safety System - Setup Tool</h1>
         </div>
         <div class="step-nav flex flex-wrap justify-center bg-gray-700 p-2 shadow-inner">
             <button type="button" id="nav1" onclick="showStep(1)" class="current px-3 py-2 text-sm font-medium rounded-md m-1" disabled>Step 1: Welcome</button>
@@ -54,8 +55,8 @@
         <div class="p-6 md:p-8">
             <!-- Step 1: Welcome -->
             <div id="step1" class="step active">
-                <h2 class="text-xl font-semibold mb-4 text-blue-300">Welcome to the WSA Setup Wizard</h2>
-                <p class="text-gray-300 mb-4">This tool will guide you through creating and customizing your Workplace Support App (WSA), which combines Lone Worker Safety with Visit Reporting.</p>
+                <h2 class="text-xl font-semibold mb-4 text-blue-300">Welcome to the LWS Setup Wizard</h2>
+                <p class="text-gray-300 mb-4">This tool will guide you through creating and customizing your Lone Worker Safety system. It will generate a <strong>`.zip`</strong> file containing the final, ready-to-host applications for your workers and monitors.</p>
                 <p class="text-gray-300 mb-6">We recommend downloading the full documentation PDF before you begin. You can also find this link in the final step.</p>
                 
                 <a href="https://russell-netizen.github.io/LWSS/templates/LWS_Documentation.pdf" download="LWS_Documentation.pdf" class="block w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg text-lg mb-6">
@@ -70,22 +71,15 @@
             <div id="step2" class="step">
                 <h2 class="text-xl font-semibold mb-4 text-blue-300">Step 2: Set Up Your Google Sheet</h2>
                  <ol class="list-decimal list-inside text-gray-300 space-y-3 mb-6">
-                    <li>Go to <a href="https://sheets.new" target="_blank" class="text-blue-400 hover:underline"><strong>sheets.new</strong></a> to create a new, blank Google Sheet. Give it a name (e.g., "WSA Data").</li>
-                    <li>The first sheet tab is your `Visits` log. Click **once** on cell <strong>A1</strong>.</li>
-                    <li>Click the "Copy Headers" button below and **Paste** the text. The headers (21 columns) should automatically fill row 1 from cell A1 to U1.</li>
-                    <li class="mt-4">**Create the Checklists Tab:**
-                        <ul class="list-disc list-inside ml-6 mt-2 p-2 bg-gray-700 rounded-md space-y-1">
-                            <li>Click the <strong>`+`</strong> icon at the bottom of the sheet to add a new tab.</li>
-                            <li>Double-click the new tab's name (e.g., "Sheet2") and rename it to **`Checklists`**. (Spelling must be exact).</li>
-                            <li>In this new `Checklists` sheet, click cell **A1** and type `Company Name`.</li>
-                            <li>In cell **B1**, type `Question 1`. In **C1**, type `Question 2`, and so on for any custom questions you need.</li>
-                        </ul>
-                    </li>
+                    <li>Go to <a href="https://sheets.new" target="_blank" class="text-blue-400 hover:underline"><strong>sheets.new</strong></a> to create a new, blank Google Sheet. Give it a name (e.g., "LWS Data").</li>
+                    <li>Click the button below to copy the required spreadsheet <strong>headers</strong> (they will be copied with tabs between them).</li>
+                    <li>In your new sheet, click <strong>once</strong> on cell <strong>A1</strong>.</li>
+                    <li><strong>Paste</strong> the copied text. The headers should automatically fill row 1 from cell A1 to S1.</li> 
                 </ol>
                 <div class="relative bg-gray-900 rounded-lg p-4 font-mono text-sm text-gray-400 pr-16 mb-4">
                     <button type="button" id="copyHeadersBtn" onclick="copyHeadersTabDelimited(this)" class="copy-btn">Copy Headers</button>
-                    {/* Updated Display Text */}
-                    <p id="headersDisplayText" class="overflow-x-auto">Date,Worker Name,Worker Phone Number,Emergency Contact Name,Emergency Contact Number,Emergency Contact Email,Escalation Contact Name,Escalation Contact Number,Escalation Contact Email,Location Name,Location Address,Company Name,Arrival Time,Anticipated Departure Time,Actual Departure Time,Alarm Status,Visit Report Data,Notes,Last Known GPS,GPS Timestamp,Battery Level</p> 
+                    <!-- Display text shows commas, but copied text uses tabs -->
+                    <p id="headersDisplayText" class="overflow-x-auto">Date,Worker Name,Worker Phone Number,Emergency Contact Name,Emergency Contact Number,Emergency Contact Email,Escalation Contact Name,Escalation Contact Number,Escalation Contact Email,Location Name,Location Address,Arrival Time,Anticipated Departure Time,Actual Departure Time,Alarm Status,Notes,Last Known GPS,GPS Timestamp,Battery Level</p> 
                 </div>
                 <button type="button" onclick="nextStep()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg">Next Step</button>
             </div>
@@ -96,14 +90,14 @@
                 <ol class="list-decimal list-inside text-gray-300 space-y-3 mb-6">
                     <li>In your Google Sheet, click <strong>`Extensions`</strong> > <strong>`Apps Script`</strong>.</li>
                     <li>Delete any code in the <strong>`Code.gs`</strong> file.</li>
-                    <li><strong>Create a Secret Key:</strong> Enter a strong, private password in the box below.</li>
+                    <li><strong>Create a Secret Key:</strong> Enter a strong, private password in the box below. This will be automatically injected into the script code for you.</li>
                     
                     <div class="mb-4 ml-6"> 
                         <label for="secretKeyStep3" class="block text-sm font-medium text-gray-300">Create a Secret Key</label>
                         <input type="password" id="secretKeyStep3" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Enter a strong, private password">
                     </div>
 
-                    <li>Click the <strong>"Copy Script"</strong> button below to copy the new backend code (with your key injected).</li>
+                    <li>Click the <strong>"Copy Script"</strong> button below. The complete, customized code (with your key included) will be copied to your clipboard.</li>
                     <li><strong>Paste</strong> the copied code into the empty <strong>`Code.gs`</strong> editor.</li>
                     <li>Click the <strong>`Deploy`</strong> button (top right), select <strong>`New deployment`</strong>.
                         <ul class="list-disc list-inside ml-6 mt-2 p-2 bg-gray-700 rounded-md">
@@ -115,7 +109,7 @@
                     </li>
                     <li><strong>Authorize</strong> the script (click "Authorize access", choose your account, click "Advanced", then "Go to... (unsafe)", and "Allow").</li>
                     <li>After deploying, **copy the "Web app URL"**. You will need it in the next step.</li>
-                    <li>Set up the <strong>trigger</strong>:
+                    <li>Finally, set up the <strong>trigger</strong>:
                         <ul class="list-disc list-inside ml-6 mt-2 p-2 bg-gray-700 rounded-md">
                             <li>Click the "Triggers" icon (alarm clock) on the left.</li>
                             <li>Click <strong>`Add Trigger`</strong>.</li>
@@ -134,7 +128,7 @@
             <!-- Step 4: Configure Apps -->
             <div id="step4" class="step">
                 <h2 class="text-xl font-semibold mb-4 text-blue-300">Step 4: Configure Your Applications</h2>
-                <p class="text-gray-300 mb-6">Enter the values you just created. This will inject them into the final app files.</p>
+                <p class="text-gray-300 mb-6">Enter the values you just created. This will inject them into the final app files, removing the need for manual setup by your users.</p>
                 <div class="space-y-4">
                     <div>
                         <label for="scriptUrl" class="block text-sm font-medium text-gray-300">Web App URL</label>
@@ -200,8 +194,8 @@
     const config = {
         secretKey: ""
     };
-    // === UPDATED Header String ===
-    const headersTabDelimited = "Date\tWorker Name\tWorker Phone Number\tEmergency Contact Name\tEmergency Contact Number\tEmergency Contact Email\tEscalation Contact Name\tEscalation Contact Number\tEscalation Contact Email\tLocation Name\tLocation Address\tCompany Name\tArrival Time\tAnticipated Departure Time\tActual Departure Time\tAlarm Status\tVisit Report Data\tNotes\tLast Known GPS\tGPS Timestamp\tBattery Level";
+    // Updated headers text with tabs AND Battery Level
+    const headersTabDelimited = "Date\tWorker Name\tWorker Phone Number\tEmergency Contact Name\tEmergency Contact Number\tEmergency Contact Email\tEscalation Contact Name\tEscalation Contact Number\tEscalation Contact Email\tLocation Name\tLocation Address\tArrival Time\tAnticipated Departure Time\tActual Departure Time\tAlarm Status\tNotes\tLast Known GPS\tGPS Timestamp\tBattery Level";
 
     // --- Template Fetching ---
     window.onload = async () => {
@@ -218,6 +212,7 @@
         };
 
         try {
+             // --- FIXED: Removed .md files from initial fetch list ---
             const templateFiles = [
                 'apps_script_template.txt',
                 'worker_app_template.txt',
@@ -322,7 +317,7 @@
             button.innerText = 'Copied!';
             button.classList.add('copied');
             setTimeout(() => {
-                button.innerText = 'Copy Headers'; // --- Corrected text ---
+                button.innerText = 'Copy Headers'; 
                 button.classList.remove('copied');
             }, 2000);
         }).catch(err => {
@@ -332,7 +327,6 @@
     }
 
     function copyToClipboard(elementId, button) { 
-        // This function is no longer used for headers, but kept for future use.
         const textEl = document.getElementById(elementId);
         if (!textEl || !navigator.clipboard) {
             alert('Clipboard API not available.');
@@ -560,31 +554,17 @@
             let monitorApp = templates['monitor_app_template.txt'];
             
             monitorApp = monitorApp.replace(/%%LOGO_URL%%/g, logoUrl); 
-            monitorApp = monitorApp.replace(/<!-- SETUP_PAGE_START -->.*?<!-- SETUP_PAGE_END -->/s, '');
-            monitorApp = monitorApp.replace(/<!-- RESET_BUTTON_START -->.*?<!-- RESET_BUTTON_END -->/s, '');
-            monitorApp = monitorApp.replace('<div id="dashboardPage" class="h-full flex-col hidden">', '<div id="dashboardPage" class="h-full flex flex-col">');
             
-            const loginLogic = `
-    sheetUrl = "${url}";
-    secretKey = "${key}";
-    
-    initEventListeners();
-    
-    navigate('dashboard');
-    fetchData();
-    if (pollingInterval) clearInterval(pollingInterval);
-    pollingInterval = setInterval(fetchData, 15000);
-            `;
-            // --- REVERTED TO OPTION 1 (NO AUTO-LOGIN) ---
-            // The monitor app template will be used AS-IS (with its login screen)
-            // Only the logo is injected.
-            let secureMonitorApp = templates['monitor_app_template.txt'];
-            secureMonitorApp = secureMonitorApp.replace(/%%LOGO_URL%%/g, logoUrl);
-            // --- END REVERT ---
-
+            // Revert to Option 1: Do NOT inject credentials
+            // monitorApp = monitorApp.replace(/<!-- SETUP_PAGE_START -->.*?<!-- SETUP_PAGE_END -->/s, '');
+            // monitorApp = monitorApp.replace(/<!-- RESET_BUTTON_START -->.*?<!-- RESET_BUTTON_END -->/s, '');
+            // monitorApp = monitorApp.replace('<div id="dashboardPage" class="h-full flex-col hidden">', '<div id="dashboardPage" class="h-full flex flex-col">');
+            // const loginLogic = `...`; 
+            // monitorApp = monitorApp.replace(/<!-- MONITOR_LOGIN_LOGIC_START -->.*?<!-- MONITOR_LOGIN_LOGIC_END -->/s, loginLogic);
+            
             const monitorFolder = zip.folder('MonitoringDashboardApp');
              if (!monitorFolder) throw new Error("Could not create monitor folder in zip");
-            monitorFolder.file('index.html', secureMonitorApp); // Use the secure version
+            monitorFolder.file('index.html', monitorApp); // Use the original, secure template
 
             // --- 4. Process Apps Script ---
             statusEl.innerText = 'Processing Apps Script file...';
@@ -594,6 +574,7 @@
 
             // --- 5. Documentation Removed from Zip ---
             statusEl.innerText = 'Skipping documentation packaging...';
+            // --- FIXED: Removed buggy doc replace lines that caused SyntaxError ---
              
             // --- 6. Generate and Download ---
             statusEl.innerText = 'Generating .zip file...';
