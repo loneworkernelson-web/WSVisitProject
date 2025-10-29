@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LWS - Deployment Setup Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        .step { display: none; }
+        .step.active { display: block; }
+        .step-nav button {
+            transition: background-color 0.2s, color 0.2s;
+        }
+        .step-nav button.current {
+            background-color: #3b82f6;
+            color: white;
+            font-weight: 600;
+        }
+        .copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background-color: #4b5563;
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .copy-btn:hover { background-color: #6b7280; }
+        .copy-btn.copied { background-color: #10b981; }
+        strong { color: #60a5fa; font-weight: 600; }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen p-4 md:p-8">
+    <div class="max-w-4xl mx-auto bg-gray-800 rounded-lg shadow-xl overflow-hidden">
+        
+        <!-- Header / Step Navigation -->
+        <div class="bg-gray-900 p-4 border-b border-gray-700">
+            <h1 class="text-2xl font-bold text-blue-400 text-center">Workplace Support App - Setup Tool</h1>
+        </div>
+        <div class="step-nav flex flex-wrap justify-center bg-gray-700 p-2 shadow-inner">
+            <button type="button" id="nav1" onclick="showStep(1)" class="current px-3 py-2 text-sm font-medium rounded-md m-1" disabled>Step 1: Welcome</button>
+            <button type="button" id="nav2" onclick="showStep(2)" class="px-3 py-2 text-sm font-medium rounded-md m-1 text-gray-400" disabled>Step 2: Sheet Setup</button>
+            <button type="button" id="nav3" onclick="showStep(3)" class="px-3 py-2 text-sm font-medium rounded-md m-1 text-gray-400" disabled>Step 3: Deploy Script</button>
+            <button type="button" id="nav4" onclick="showStep(4)" class="px-3 py-2 text-sm font-medium rounded-md m-1 text-gray-400" disabled>Step 4: Configure Apps</button>
+            <button type="button" id="nav5" onclick="showStep(5)" class="px-3 py-2 text-sm font-medium rounded-md m-1 text-gray-400" disabled>Step 5: Download Apps</button>
+            <button type="button" id="nav6" onclick="showStep(6)" class="px-3 py-2 text-sm font-medium rounded-md m-1 text-gray-400" disabled>Step 6: Finish</button>
+        </div>
+        
+        <div class="p-6 md:p-8">
+            <!-- Step 1: Welcome -->
+            <div id="step1" class="step active">
+                <h2 class="text-xl font-semibold mb-4 text-blue-300">Welcome to the WSA Setup Wizard</h2>
+                <p class="text-gray-300 mb-4">This tool will guide you through creating and customizing your Workplace Support App (WSA), which combines Lone Worker Safety with Visit Reporting.</p>
+                <p class="text-gray-300 mb-6">We recommend downloading the full documentation PDF before you begin. You can also find this link in the final step.</p>
+                
+                <a href="https://russell-netizen.github.io/LWSS/templates/LWS_Documentation.pdf" download="LWS_Documentation.pdf" class="block w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg text-lg mb-6">
+                    Download Full Documentation (PDF)
+                </a>
+                
+                <p class="text-gray-300 mb-6">Follow the steps in order. This page will fetch the necessary template files from this repository to build your custom package.</p>
+                <button type="button" onclick="nextStep()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg">Start Setup</button>
+            </div>
+
+            <!-- Step 2: Google Sheet Setup -->
+            <div id="step2" class="step">
+                <h2 class="text-xl font-semibold mb-4 text-blue-300">Step 2: Set Up Your Google Sheet</h2>
+                 <ol class="list-decimal list-inside text-gray-300 space-y-3 mb-6">
+                    <li>Go to <a href="https://sheets.new" target="_blank" class="text-blue-400 hover:underline"><strong>sheets.new</strong></a> to create a new, blank Google Sheet. Give it a name (e.g., "WSA Data").</li>
+                    <li>The first sheet tab is your `Visits` log. Click **once** on cell <strong>A1</strong>.</li>
+                    <li>Click the "Copy Headers" button below and **Paste** the text. The headers (21 columns) should automatically fill row 1 from cell A1 to U1.</li>
+                    <li class="mt-4">**Create the Checklists Tab:**
+                        <ul class="list-disc list-inside ml-6 mt-2 p-2 bg-gray-700 rounded-md space-y-1">
+                            <li>Click the <strong>`+`</strong> icon at the bottom of the sheet to add a new tab.</li>
+                            <li>Double-click the new tab's name (e.g., "Sheet2") and rename it to **`Checklists`**. (Spelling must be exact).</li>
+                            <li>In this new `Checklists` sheet, click cell **A1** and type `Company Name`.</li>
+                            <li>In cell **B1**, type `Question 1`. In **C1**, type `Question 2`, and so on for any custom questions you need.</li>
+                        </ul>
+                    </li>
+                </ol>
+                <div class="relative bg-gray-900 rounded-lg p-4 font-mono text-sm text-gray-400 pr-16 mb-4">
+                    <button type="button" id="copyHeadersBtn" onclick="copyHeadersTabDelimited(this)" class="copy-btn">Copy Headers</button>
+                    {/* Updated Display Text */}
+                    <p id="headersDisplayText" class="overflow-x-auto">Date,Worker Name,Worker Phone Number,Emergency Contact Name,Emergency Contact Number,Emergency Contact Email,Escalation Contact Name,Escalation Contact Number,Escalation Contact Email,Location Name,Location Address,Company Name,Arrival Time,Anticipated Departure Time,Actual Departure Time,Alarm Status,Visit Report Data,Notes,Last Known GPS,GPS Timestamp,Battery Level</p> 
+                </div>
+                <button type="button" onclick="nextStep()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg">Next Step</button>
+            </div>
+
+            <!-- Step 3: Deploy Google Apps Script -->
+            <div id="step3" class="step">
+                <h2 class="text-xl font-semibold mb-4 text-blue-300">Step 3: Deploy the Backend Script</h2>
+                <ol class="list-decimal list-inside text-gray-300 space-y-3 mb-6">
+                    <li>In your Google Sheet, click <strong>`Extensions`</strong> > <strong>`Apps Script`</strong>.</li>
+                    <li>Delete any code in the <strong>`Code.gs`</strong> file.</li>
+                    <li><strong>Create a Secret Key:</strong> Enter a strong, private password in the box below.</li>
+                    
+                    <div class="mb-4 ml-6"> 
+                        <label for="secretKeyStep3" class="block text-sm font-medium text-gray-300">Create a Secret Key</label>
+                        <input type="password" id="secretKeyStep3" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Enter a strong, private password">
+                    </div>
+
+                    <li>Click the <strong>"Copy Script"</strong> button below to copy the new backend code (with your key injected).</li>
+                    <li><strong>Paste</strong> the copied code into the empty <strong>`Code.gs`</strong> editor.</li>
+                    <li>Click the <strong>`Deploy`</strong> button (top right), select <strong>`New deployment`</strong>.
+                        <ul class="list-disc list-inside ml-6 mt-2 p-2 bg-gray-700 rounded-md">
+                            <li>Click the Gear icon for "Select type" and choose <strong>`Web app`</strong>.</li>
+                            <li>For "Execute as", select <strong>`Me`</strong>.</li>
+                            <li>For "Who has access", select <strong>`Anyone`</strong>.</li>
+                            <li>Click <strong>`Deploy`</strong>.</li>
+                        </ul>
+                    </li>
+                    <li><strong>Authorize</strong> the script (click "Authorize access", choose your account, click "Advanced", then "Go to... (unsafe)", and "Allow").</li>
+                    <li>After deploying, **copy the "Web app URL"**. You will need it in the next step.</li>
+                    <li>Set up the <strong>trigger</strong>:
+                        <ul class="list-disc list-inside ml-6 mt-2 p-2 bg-gray-700 rounded-md">
+                            <li>Click the "Triggers" icon (alarm clock) on the left.</li>
+                            <li>Click <strong>`Add Trigger`</strong>.</li>
+                            <li>Set function to <strong>`checkOverdueWorkers`</strong>, source to <strong>`Time-driven`</strong>, type to <strong>`Minutes timer`</strong>, and interval to <strong>`Every 5 minutes`</strong>. Click <strong>`Save`</strong>.</li>
+                        </ul>
+                    </li>
+                </ol>
+
+                <div class="relative bg-gray-900 rounded-lg mb-4 h-64 overflow-y-auto">
+                    <button type="button" id="copyScriptBtn" onclick="copyInjectedScript(this)" class="copy-btn z-10">Copy Script</button>
+                    <pre id="scriptPreview" class="p-4 text-xs text-gray-400">Loading script preview...</pre>
+                </div>
+                <button type="button" onclick="nextStep()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg">Next Step</button>
+            </div>
+
+            <!-- Step 4: Configure Apps -->
+            <div id="step4" class="step">
+                <h2 class="text-xl font-semibold mb-4 text-blue-300">Step 4: Configure Your Applications</h2>
+                <p class="text-gray-300 mb-6">Enter the values you just created. This will inject them into the final app files.</p>
+                <div class="space-y-4">
+                    <div>
+                        <label for="scriptUrl" class="block text-sm font-medium text-gray-300">Web App URL</label>
+                        <input type="url" id="scriptUrl" oninput="validateUrl(this)" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Paste the Web app URL from Step 3">
+                    </div>
+                    <div>
+                        <label for="secretKey" class="block text-sm font-medium text-gray-300">Secret Key</label>
+                        <input type="text" id="secretKey" class="mt-1 block w-full bg-gray-600 border border-gray-500 rounded-md shadow-sm py-2 px-3 text-gray-400 focus:outline-none" readonly>
+                        <p class="text-xs text-gray-400 mt-1">This is auto-filled from Step 3 for confirmation.</p>
+                    </div>
+                    <div>
+                        <label for="firstAlert" class="block text-sm font-medium text-gray-300">First Overdue Alert (Minutes)</label>
+                        <input type="number" id="firstAlert" value="15" min="1" class="mt-1 block w-48 bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <p class="text-xs text-gray-400 mt-1">Time a worker is overdue before the Worker App sends an 'ALERT SENT' status (and the backend sends <strong>`EMAIL_1_SENT`</strong>). 15 minutes is recommended.</p>
+                    </div>
+                    <div class="flex items-center">
+                        <input id="enableCheckin" type="checkbox" class="h-4 w-4 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500">
+                        <label for="enableCheckin" class="ml-2 block text-sm font-medium text-gray-300">Enable "Are You OK?" Check-ins (Optional)</label>
+                    </div>
+                     <div id="checkinIntervalDiv" class="hidden ml-6"> 
+                        <label for="checkinInterval" class="block text-sm font-medium text-gray-300">Check-in Interval (Minutes)</label>
+                        <input type="number" id="checkinInterval" value="30" min="5" class="mt-1 block w-48 bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                        <p class="text-xs text-gray-400 mt-1">If check-ins are enabled, how often should the worker be prompted? (e.g., 30)</p>
+                    </div>
+                     <div>
+                        <label for="logoUrl" class="block text-sm font-medium text-gray-300">Company Logo URL (Optional)</label>
+                        <input type="url" id="logoUrl" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="https://your-logo.com/image.png">
+                        <p class="text-xs text-gray-400 mt-1">If provided, this will replace the default icon for the Worker PWA and appear in the Monitor App header.</p> 
+                    </div>
+                </div>
+                <button type="button" onclick="testAndProceed()" class="mt-8 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg">Test Connection & Proceed</button>
+                <p id="testStatus" class="text-center text-yellow-400 mt-4 h-4"></p>
+            </div>
+
+            <!-- Step 5: Download Apps -->
+            <div id="step5" class="step">
+                <h2 class="text-xl font-semibold mb-4 text-blue-300">Step 5: Download Your Customized Apps</h2>
+                <p class="text-gray-300 mb-6">Your configuration is correct. Click the button below to generate and download a <strong>`.zip`</strong> file containing your customized <strong>`LoneWorkerApp`</strong> and <strong>`MonitoringDashboardApp`</strong> folders, plus a backup of the script text.</p>
+                <button type="button" id="downloadBtn" onclick="generateZip()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg text-lg">Generate & Download App Package (.zip)</button>
+                <div id="zipStatus" class="text-center text-gray-400 mt-4"></div>
+                 <button type="button" onclick="nextStep()" class="mt-6 w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg">Next Step: Finish</button>
+            </div>
+
+            <!-- Step 6: Documentation -->
+            <div id="step6" class="step">
+                <h2 class="text-xl font-semibold mb-4 text-green-400">Setup Complete & Documentation</h2>
+                 <p class="text-gray-300 mb-4">You have successfully generated the application package!</p>
+                <p class="text-gray-300 mb-6">For detailed instructions on how to host the downloaded app folders using GitHub Pages and distribute the links to your team, please download the full documentation PDF:</p>
+                <a href="https://russell-netizen.github.io/LWSS/templates/LWS_Documentation.pdf" download="LWS_Documentation.pdf" class="block w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg text-lg">
+                    Download Full Documentation (PDF)
+                </a>
+                <p class="text-xs text-gray-400 mt-4">
+                    (You, the Setup Tool administrator, need to create this PDF and ensure this link points to its correct location.)
+                </p>
+            </div>
+        </div>
+    </div>
+
+<script>
+    let currentStep = 1;
+    const templates = {};
+    let templatesLoaded = false; 
+    const config = {
+        secretKey: ""
+    };
+    // === UPDATED Header String ===
+    const headersTabDelimited = "Date\tWorker Name\tWorker Phone Number\tEmergency Contact Name\tEmergency Contact Number\tEmergency Contact Email\tEscalation Contact Name\tEscalation Contact Number\tEscalation Contact Email\tLocation Name\tLocation Address\tCompany Name\tArrival Time\tAnticipated Departure Time\tActual Departure Time\tAlarm Status\tVisit Report Data\tNotes\tLast Known GPS\tGPS Timestamp\tBattery Level";
+
+    // --- Template Fetching ---
+    window.onload = async () => {
+        const baseUrl = window.location.href; 
+        const fetchTemplate = async (fileName) => {
+            const templateUrl = new URL(`templates/${fileName}`, baseUrl).href; 
+            console.log(`Fetching: ${templateUrl}`); 
+            const response = await fetch(templateUrl);
+            if (!response.ok) {
+                throw new Error(`Failed to load ${fileName} from ${templateUrl} - Status: ${response.status}`);
+            }
+            const text = await response.text();
+            templates[fileName] = text;
+        };
+
+        try {
+            const templateFiles = [
+                'apps_script_template.txt',
+                'worker_app_template.txt',
+                'monitor_app_template.txt',
+                'manifest.json',
+                'sw.js'
+            ];
+            for (const file of templateFiles) {
+                await fetchTemplate(file);
+            }
+            
+            console.log('All code templates loaded successfully.');
+            templatesLoaded = true; 
+            
+            const scriptPreviewEl = document.getElementById('scriptPreview');
+            if (scriptPreviewEl && templates['apps_script_template.txt']) {
+                scriptPreviewEl.textContent = templates['apps_script_template.txt'];
+            } else {
+                 console.warn("Script preview element or template not found after load.");
+            }
+            const enableCheckinEl = document.getElementById('enableCheckin');
+            const checkinIntervalDivEl = document.getElementById('checkinIntervalDiv');
+            if (enableCheckinEl && checkinIntervalDivEl) {
+                 enableCheckinEl.addEventListener('change', (event) => {
+                    if (event.target.checked) {
+                        checkinIntervalDivEl.classList.remove('hidden');
+                    } else {
+                         checkinIntervalDivEl.classList.add('hidden');
+                    }
+                 });
+            } else {
+                 console.warn("Checkin elements not found for event listener setup.");
+            }
+
+        } catch (error) {
+            console.error("Template Loading Error:", error); 
+            templatesLoaded = false; 
+            alert(`Error: Could not load template files. ${error.message}. Please ensure the 'templates' folder exists in the same directory as setup.html and contains all required files. Check the browser console (F12) for more details.`);
+            document.querySelectorAll('button').forEach(btn => btn.disabled = true);
+            const statusEl = document.getElementById('zipStatus') || document.getElementById('testStatus');
+            if (statusEl) statusEl.innerText = "Error: Templates failed to load. Cannot proceed.";
+        }
+    };
+
+    // --- Navigation ---
+    function showStep(step) {
+        document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
+        const stepEl = document.getElementById(`step${step}`);
+        if (stepEl) stepEl.classList.add('active');
+        else console.error(`showStep: Could not find step element 'step${step}'`);
+        
+        document.querySelectorAll('.step-nav button').forEach(el => el.classList.remove('current'));
+        const navEl = document.getElementById(`nav${step}`);
+        if (navEl) navEl.classList.add('current');
+        else console.error(`showStep: Could not find nav element 'nav${step}'`);
+        
+        currentStep = step;
+
+        if (step === 4) {
+             const secretKeyEl = document.getElementById('secretKey');
+             if (secretKeyEl) secretKeyEl.value = config.secretKey;
+             else console.error(`showStep: Could not find secretKey element in step 4`);
+        }
+    }
+
+    function nextStep() {
+        if (!templatesLoaded && currentStep > 0) { 
+             alert("Templates are still loading or failed to load. Please wait or check the console for errors.");
+             return;
+        }
+
+        if (currentStep === 3) {
+            const keyInput = document.getElementById('secretKeyStep3');
+            if (!keyInput || !keyInput.value) {
+                alert("Please enter a Secret Key before proceeding.");
+                return; 
+            }
+            config.secretKey = keyInput.value;
+        }
+        
+        const maxSteps = 6;
+        if (currentStep < maxSteps) {
+            const nextNav = document.getElementById(`nav${currentStep + 1}`);
+            if (nextNav) {
+                nextNav.disabled = false;
+                nextNav.classList.remove('text-gray-400');
+            } else {
+                 console.error(`nextStep: Could not find next nav element 'nav${currentStep + 1}'`);
+            }
+            showStep(currentStep + 1);
+        }
+    }
+
+    // --- Utilities ---
+    function copyHeadersTabDelimited(button) {
+         if (!navigator.clipboard) {
+            alert('Clipboard API not available.');
+             console.error('Clipboard API not available.');
+            return;
+        }
+        navigator.clipboard.writeText(headersTabDelimited).then(() => {
+            button.innerText = 'Copied!';
+            button.classList.add('copied');
+            setTimeout(() => {
+                button.innerText = 'Copy Headers'; // --- Corrected text ---
+                button.classList.remove('copied');
+            }, 2000);
+        }).catch(err => {
+            alert('Failed to copy headers.');
+            console.error('Clipboard copy failed:', err);
+        });
+    }
+
+    function copyToClipboard(elementId, button) { 
+        // This function is no longer used for headers, but kept for future use.
+        const textEl = document.getElementById(elementId);
+        if (!textEl || !navigator.clipboard) {
+            alert('Clipboard API not available.');
+             console.error('Clipboard API not available or element not found:', elementId);
+            return;
+        }
+        const text = textEl.innerText;
+        navigator.clipboard.writeText(text).then(() => {
+            button.innerText = 'Copied!';
+            button.classList.add('copied');
+            setTimeout(() => {
+                button.innerText = 'Copy';
+                button.classList.remove('copied');
+            }, 2000);
+        }).catch(err => {
+            alert('Failed to copy.');
+            console.error('Clipboard copy failed:', err);
+        });
+    }
+
+    function copyInjectedScript(button) {
+         if (!templatesLoaded) { 
+             alert('Templates are still loading or failed to load. Cannot copy script yet.');
+             return;
+         }
+        const keyInput = document.getElementById('secretKeyStep3');
+        const key = keyInput ? keyInput.value : '';
+        if (!key) {
+            alert("Please enter a Secret Key in the box above first.");
+            return;
+        }
+
+        const template = templates['apps_script_template.txt'];
+        if (!template) {
+            alert('Error: Script template not loaded. Cannot copy.');
+            console.error('copyInjectedScript: apps_script_template not loaded.');
+            return;
+        }
+        
+        const injectedScript = template.replace('YOUR_SECRET_KEY_HERE', key);
+
+        if (!navigator.clipboard) {
+            alert('Clipboard API not available.');
+            console.error('Clipboard API not available.');
+            return;
+        }
+        navigator.clipboard.writeText(injectedScript).then(() => {
+            button.innerText = 'Copied!';
+            button.classList.add('copied');
+            setTimeout(() => {
+                button.innerText = 'Copy Script';
+                button.classList.remove('copied');
+            }, 2000);
+        }).catch(err => {
+            alert('Failed to copy.');
+             console.error('Clipboard copy failed:', err);
+        });
+    }
+
+    function validateUrl(input) {
+         if (!input) return; 
+        const urlPattern = /^https:\/\/script\.google\.com\/macros\/s\/.*\/exec$/;
+        if (input.value && !urlPattern.test(input.value)) {
+            input.style.borderColor = '#ef4444'; 
+        } else {
+            input.style.borderColor = ''; 
+        }
+    }
+
+    // --- Core Logic ---
+    function testAndProceed() {
+         if (!templatesLoaded) { 
+             alert('Templates are still loading or failed to load. Cannot test connection yet.');
+             return;
+         }
+        const urlInput = document.getElementById('scriptUrl');
+        const keyInput = document.getElementById('secretKey'); 
+        const statusEl = document.getElementById('testStatus');
+        
+        if (!urlInput || !keyInput || !statusEl) {
+             console.error("testAndProceed: Missing required elements.");
+             return; 
+        }
+
+        const url = urlInput.value;
+        const key = keyInput.value; 
+
+        if (!url || !key) {
+            statusEl.innerText = 'Please fill in both the URL and Secret Key.';
+            return;
+        }
+
+        validateUrl(urlInput);
+        if (urlInput.style.borderColor) {
+             statusEl.innerText = 'The URL format appears to be incorrect.';
+             return;
+        }
+
+        statusEl.innerText = 'Testing connection...';
+
+        const script = document.createElement('script');
+        const callbackName = 'jsonp_callback_' + Date.now();
+        let timer;
+
+        const cleanupJsonp = () => {
+             clearTimeout(timer);
+             delete window[callbackName];
+             if(document.body.contains(script)) {
+                 document.body.removeChild(script);
+             }
+        };
+
+        window[callbackName] = function(data) {
+            cleanupJsonp();
+            if (data.status === 'error' && data.message.includes('Access Denied')) {
+                statusEl.innerText = 'Error: Access Denied. Your Secret Key is incorrect.';
+            } else if (Array.isArray(data)) {
+                statusEl.innerText = 'Success! Connection verified.';
+                nextStep(); // Move to Step 5 (Download Apps)
+            } else {
+                statusEl.innerText = 'Error: Received unexpected data from the script.';
+                 console.error("JSONP Response Error:", data);
+            }
+        };
+
+        script.src = url + '?callback=' + callbackName + '&token=' + encodeURIComponent(key);
+        script.onerror = () => {
+            cleanupJsonp();
+            statusEl.innerText = 'Error: Could not connect. Check the Web App URL, network, and CORS settings.';
+             console.error("JSONP Script onerror triggered.");
+        };
+        
+        timer = setTimeout(() => {
+            if (window[callbackName]) { 
+                 console.error("JSONP Request Timed Out");
+                 cleanupJsonp();
+                 statusEl.innerText = 'Error: Connection timed out. Check URL or script deployment.';
+            }
+        }, 15000); 
+
+        document.body.appendChild(script);
+    }
+
+    async function generateZip() {
+         if (!templatesLoaded) {
+             alert('Templates are still loading or failed to load. Cannot generate zip file.');
+             return;
+         }
+
+        const statusEl = document.getElementById('zipStatus');
+        const downloadBtn = document.getElementById('downloadBtn');
+        if (!statusEl || !downloadBtn) {
+             console.error("generateZip: Missing status or download button element.");
+             return; 
+        }
+
+        statusEl.innerText = 'Gathering files...';
+        downloadBtn.disabled = true;
+        downloadBtn.classList.add('bg-gray-500', 'cursor-not-allowed');
+        downloadBtn.classList.remove('hover:bg-blue-700');
+
+
+        try {
+            if (typeof JSZip === 'undefined') {
+                 throw new Error("JSZip library not loaded.");
+            }
+            const zip = new JSZip();
+
+            const urlInput = document.getElementById('scriptUrl');
+            const keyInput = document.getElementById('secretKey');
+            const firstAlertInput = document.getElementById('firstAlert');
+            const enableCheckinInput = document.getElementById('enableCheckin');
+            const checkinIntervalInput = document.getElementById('checkinInterval');
+            const logoUrlInput = document.getElementById('logoUrl');
+
+            if (!urlInput || !keyInput || !firstAlertInput || !enableCheckinInput || !checkinIntervalInput || !logoUrlInput) {
+                 throw new Error("One or more configuration input elements are missing in Step 4.");
+            }
+
+            const url = urlInput.value;
+            const key = keyInput.value; 
+            const firstAlert = firstAlertInput.value;
+            const checkin = enableCheckinInput.checked;
+            const checkinInterval = checkinIntervalInput.value || '30'; 
+            const logoUrl = logoUrlInput.value || 'https://i.postimg.cc/dVmVg3Pn/favicon-logo-for-LWSApp.png'; 
+            
+            if (!url) throw new Error("Web App URL is required.");
+            if (!key) throw new Error("Secret Key is required (should be auto-filled).");
+            if (!firstAlert) throw new Error("First Alert time is required.");
+
+            const requiredZipTemplates = [
+                 'worker_app_template.txt', 
+                 'monitor_app_template.txt', 
+                 'manifest.json', 
+                 'sw.js', 
+                 'apps_script_template.txt',
+            ];
+            for (const tpl of requiredZipTemplates) {
+                if (!templates[tpl] || typeof templates[tpl] !== 'string') {
+                    throw new Error(`Template file '${tpl}' not loaded or is not text. Cannot generate zip.`);
+                }
+            }
+
+            // --- 1. Process Worker App ---
+            statusEl.innerText = 'Processing Worker App...';
+            let workerApp = templates['worker_app_template.txt'];
+            workerApp = workerApp.replace(/%%FIRST_ALERT_MINUTES%%/g, firstAlert);
+            workerApp = workerApp.replace(/%%CHECKIN_ENABLED%%/g, checkin);
+            workerApp = workerApp.replace(/%%CHECKIN_INTERVAL%%/g, checkinInterval);
+            workerApp = workerApp.replace(/https://i\.postimg\.cc\/dVmVg3Pn\/favicon-logo-for-LWSApp\.png/g, logoUrl);
+            workerApp = workerApp.replace(/%%GOOGLE_SHEET_URL%%/g, url);
+            
+            const workerFolder = zip.folder('LoneWorkerApp');
+            if (!workerFolder) throw new Error("Could not create worker folder in zip");
+            workerFolder.file('index.html', workerApp);
+            workerFolder.file('sw.js', templates['sw.js']);
+
+            // --- 2. Process Manifest ---
+            let manifest = templates['manifest.json'];
+            manifest = manifest.replace(/https:\/\/i\.postimg\.cc\/dVmVg3Pn\/favicon-logo-for-LWSApp\.png/g, logoUrl);
+            workerFolder.file('manifest.json', manifest);
+
+            // --- 3. Process Monitor App ---
+            statusEl.innerText = 'Processing Monitor App...';
+            let monitorApp = templates['monitor_app_template.txt'];
+            
+            monitorApp = monitorApp.replace(/%%LOGO_URL%%/g, logoUrl); 
+            monitorApp = monitorApp.replace(/<!-- SETUP_PAGE_START -->.*?<!-- SETUP_PAGE_END -->/s, '');
+            monitorApp = monitorApp.replace(/<!-- RESET_BUTTON_START -->.*?<!-- RESET_BUTTON_END -->/s, '');
+            monitorApp = monitorApp.replace('<div id="dashboardPage" class="h-full flex-col hidden">', '<div id="dashboardPage" class="h-full flex flex-col">');
+            
+            const loginLogic = `
+    sheetUrl = "${url}";
+    secretKey = "${key}";
+    
+    initEventListeners();
+    
+    navigate('dashboard');
+    fetchData();
+    if (pollingInterval) clearInterval(pollingInterval);
+    pollingInterval = setInterval(fetchData, 15000);
+            `;
+            // --- REVERTED TO OPTION 1 (NO AUTO-LOGIN) ---
+            // The monitor app template will be used AS-IS (with its login screen)
+            // Only the logo is injected.
+            let secureMonitorApp = templates['monitor_app_template.txt'];
+            secureMonitorApp = secureMonitorApp.replace(/%%LOGO_URL%%/g, logoUrl);
+            // --- END REVERT ---
+
+            const monitorFolder = zip.folder('MonitoringDashboardApp');
+             if (!monitorFolder) throw new Error("Could not create monitor folder in zip");
+            monitorFolder.file('index.html', secureMonitorApp); // Use the secure version
+
+            // --- 4. Process Apps Script ---
+            statusEl.innerText = 'Processing Apps Script file...';
+            let appsScript = templates['apps_script_template.txt'];
+            appsScript = appsScript.replace('YOUR_SECRET_KEY_HERE', key);
+            zip.file('01-PASTE_THIS_INTO_APPS_SCRIPT.txt', appsScript);
+
+            // --- 5. Documentation Removed from Zip ---
+            statusEl.innerText = 'Skipping documentation packaging...';
+             
+            // --- 6. Generate and Download ---
+            statusEl.innerText = 'Generating .zip file...';
+            const content = await zip.generateAsync({ type: 'blob' });
+            
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(content);
+            a.download = 'LWS_App_Package.zip'; 
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href); 
+
+            statusEl.innerText = 'App package download initiated!';
+            
+        } catch (error) {
+            console.error("Error during zip generation:", error);
+            statusEl.innerText = `Error generating zip file: ${error.message}. See console for details.`;
+           
+        } finally {
+             downloadBtn.disabled = false;
+             downloadBtn.classList.remove('bg-gray-500', 'cursor-not-allowed');
+             downloadBtn.classList.add('hover:bg-blue-700');
+        }
+    }
+</script>
+</body>
+</html>
+
