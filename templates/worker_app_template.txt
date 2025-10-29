@@ -9,8 +9,8 @@
 <meta name="apple-mobile-web-app-title" content="WSA App">
 <meta name="theme-color" content="#111827">
 <link rel="manifest" href="manifest.json">
-<link rel="icon" type="image/png" href="https://i.postimg.cc/dVmVg3Pn/favicon-logo-for-LWSApp.png">
-<link rel="apple-touch-icon" href="https://i.postimg.cc/dVmVg3Pn/favicon-logo-for-LWSApp.png">
+<link rel="icon" type="image/png" href="https://i.postimg.cc/pd5PQJY9/favicon-logo-for-LWS.png">
+<link rel="apple-touch-icon" href="https://i.postimg.cc/pd5PQJY9/favicon-logo-for-LWS.png">
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
@@ -285,10 +285,10 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     ];
     
     // --- TEMPLATE PLACEHOLDERS ---
-    var FIRST_ALERT_MINUTES = %%FIRST_ALERT_MINUTES%%;
+    var FIRST_ALERT_MINUTES = 15;
     const PRE_ALERT_OFFSET = 2; 
-    var CHECKIN_ENABLED = %%CHECKIN_ENABLED%%;
-    var CHECKIN_INTERVAL = %%CHECKIN_INTERVAL%%; 
+    var CHECKIN_ENABLED = false;
+    var CHECKIN_INTERVAL = 30; 
     // --- END PLACEHOLDERS ---
 
     let synth, checkinCountdownInterval;
@@ -405,7 +405,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
         } 
         // --- END BUG FIX ---
         
-        const prefilledUrl = "%%GOOGLE_SHEET_URL%%";
+        const prefilledUrl = "https://script.google.com/macros/s/AKfycbzUckX4sAy15mOS-x-eG4MTISdaugAPOQb2OVfTfRMOM7uwDI38Uusq-MZC-cKXcgrahg/exec";
         if (prefilledUrl.startsWith('http') && !state.settings.googleSheetUrl) {
             state.settings.googleSheetUrl = prefilledUrl;
             saveState();
