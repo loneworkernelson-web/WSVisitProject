@@ -9,8 +9,8 @@
 <meta name="apple-mobile-web-app-title" content="WSA App">
 <meta name="theme-color" content="#111827">
 <link rel="manifest" href="manifest.json">
-<link rel="icon" type="image/png" href="https://i.postimg.cc/pd5PQJY9/favicon-logo-for-LWS.png">
-<link rel="apple-touch-icon" href="https://i.postimg.cc/pd5PQJY9/favicon-logo-for-LWS.png">
+<link rel="icon" type="image/png" href="https://i.postimg.cc/dVmVg3Pn/favicon-logo-for-LWSApp.png">
+<link rel="apple-touch-icon" href="https://i.postimg.cc/dVmVg3Pn/favicon-logo-for-LWSApp.png">
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
@@ -285,10 +285,10 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     ];
     
     // --- TEMPLATE PLACEHOLDERS ---
-    var FIRST_ALERT_MINUTES = 15;
+    var FIRST_ALERT_MINUTES = %%FIRST_ALERT_MINUTES%%;
     const PRE_ALERT_OFFSET = 2; 
-    var CHECKIN_ENABLED = false;
-    var CHECKIN_INTERVAL = 30; 
+    var CHECKIN_ENABLED = %%CHECKIN_ENABLED%%;
+    var CHECKIN_INTERVAL = %%CHECKIN_INTERVAL%%; 
     // --- END PLACEHOLDERS ---
 
     let synth, checkinCountdownInterval;
@@ -368,7 +368,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     // --- UPDATED loadState ---
     function loadState() { 
         const savedState = JSON.parse(localStorage.getItem('loneWorkerState')); 
-        // --- WSA: Initialize new state properties ---
+        
         const defaultState = {
             settings: { workerName: '', workerPhone: '', emergencyName: '', emergencyPhone: '', emergencyEmail: '', escalationName: '', escalationPhone: '', escalationEmail: '', pinCode: '', duressPin: '', googleSheetUrl: '' }, 
             locations: [], 
@@ -378,7 +378,24 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             cachedForms: {},
             pendingUploads: []
         };
+        
+        // Merge saved state onto default state
         state = { ...defaultState, ...savedState };
+        // Deep merge settings object
+        state.settings = { ...defaultState.settings, ...(savedState ? savedState.settings : {}) };
+
+        // --- ROBUSTNESS FIX: Ensure arrays/objects are correct type ---
+        if (!Array.isArray(state.locations)) {
+            state.locations = [];
+        }
+        if (!Array.isArray(state.pendingUploads)) {
+            state.pendingUploads = [];
+        }
+        if (typeof state.cachedForms !== 'object' || state.cachedForms === null || Array.isArray(state.cachedForms)) {
+            state.cachedForms = {};
+        }
+        // --- END FIX ---
+        
         // Ensure locations array elements have new properties
         state.locations = state.locations.map(loc => ({
             ...loc,
@@ -391,21 +408,19 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             state.activeVisit.anticipatedDepartureTime = new Date(savedState.activeVisit.anticipatedDepartureTime); 
         } 
         
-        // --- BUG FIX: Create Travelling location with full properties ---
         const travellingExists = state.locations.some(loc => loc.id === 'loc_travelling_default'); 
         if (!travellingExists) { 
             state.locations.push({ 
                 id: 'loc_travelling_default', 
                 name: 'Travelling', 
                 address: 'GPS updates will be sent every 15 minutes.',
-                companyName: 'Internal', // Add default company
-                useCustomForm: false // Add default form flag
+                companyName: 'Internal', 
+                useCustomForm: false 
             }); 
             saveState(); 
         } 
-        // --- END BUG FIX ---
         
-        const prefilledUrl = "https://script.google.com/macros/s/AKfycbzUckX4sAy15mOS-x-eG4MTISdaugAPOQb2OVfTfRMOM7uwDI38Uusq-MZC-cKXcgrahg/exec";
+        const prefilledUrl = "%%GOOGLE_SHEET_URL%%";
         if (prefilledUrl.startsWith('http') && !state.settings.googleSheetUrl) {
             state.settings.googleSheetUrl = prefilledUrl;
             saveState();
@@ -413,12 +428,10 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     }
     function saveState() { localStorage.setItem('loneWorkerState', JSON.stringify(state)); }
     
-    // --- UPDATED renderLocations ---
     function renderLocations() {
         locationList.innerHTML = ''; if (state.locations.length === 0) { locationList.innerHTML = `<p class="text-gray-500 text-center">No locations added yet.</p>`; }
         state.locations.sort((a,b) => a.name.localeCompare(b.name)).forEach(loc => { 
             const isSelected = loc.id === state.selectedLocationId; 
-            // --- WSA: Show company name in location list ---
             const companyHtml = loc.companyName ? `<p class="text-sm text-blue-400">${loc.companyName}${loc.useCustomForm ? ' (Custom Form)' : ''}</p>` : '';
             const locationEl = document.createElement('div'); 
             locationEl.className = `selectable-item p-3 rounded-lg cursor-pointer border-2 transition-transform duration-100 ${isSelected ? 'bg-blue-900/50 border-blue-500' : 'bg-gray-800 border-transparent hover:border-gray-600'}`; 
@@ -446,7 +459,6 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
         } 
     }
     
-    // --- UPDATED sendToGoogleSheet (WSA Offline Queue) ---
     function sendToGoogleSheet(data, isRetry = false) {
         if (!state.settings.googleSheetUrl || !state.settings.googleSheetUrl.startsWith('http')) {
             console.error("Google Sheet URL is not set.");
@@ -471,7 +483,6 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             formData.append(key, payload[key]);
         }
 
-        // Return a promise to know if it succeeded or failed
         return fetch(state.settings.googleSheetUrl, {
             method: 'POST',
             mode: 'no-cors',
@@ -481,7 +492,6 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             return Promise.resolve(); // Success
         }).catch(error => {
             console.error('Error sending data to Google Sheet:', error);
-            // If it's not a retry and it's a DEPART/REPORT, queue it.
             if (!isRetry && data["Alarm Status"] === 'DEPARTED') {
                 console.log("Network failed. Queuing report.");
                 state.pendingUploads.push(payload); 
@@ -493,7 +503,6 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             return Promise.reject(error); // Failure
         });
     }
-    // --- END UPDATED sendToGoogleSheet ---
 
     function withPinVerification(callback, isDuressAction = false) {
         if (!state.settings.pinCode) { showAlert("PIN Not Set", "Please set a PIN in settings."); return; }
@@ -534,7 +543,6 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     let visitInterval;
     function handleArriveLongPress() { playSoundAndVibrate('arrive'); attemptStartVisit(); }
     
-    // --- UPDATED handleDepartLongPress (WSA) ---
     function handleDepartLongPress() {
         playSoundAndVibrate('depart');
         showReportModal();
@@ -672,7 +680,6 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
         document.getElementById('lockedAnticipatedTime').textContent = new Date(state.activeVisit.anticipatedDepartureTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit'});
     }
     
-    // --- UPDATED depart (WSA) ---
     function depart(reportData = {}) {
         if (!state.activeVisit) return; 
         const now = new Date();
