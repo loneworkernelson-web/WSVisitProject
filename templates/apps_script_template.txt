@@ -7,14 +7,6 @@ var SECRET_KEY = "YOUR_SECRET_KEY_HERE"; // For Monitor App
 var SPREADSHEET_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
 var VISITS_SHEET_NAME = "Visits";
 var CHECKLISTS_SHEET_NAME = "Checklists";
-// --- WSA: Hardcode standard checklist for reporting ---
-var STANDARD_CHECKLIST = [
-    "Safety check completed",
-    "Client goals reviewed",
-    "Next appointment scheduled",
-    "Visit notes recorded"
-];
-
 
 // --- WEB APP ENDPOINTS ---
 
@@ -70,7 +62,7 @@ function doGet(e) {
           for (var j = 1; j < headers.length; j++) {
             var questionText = data[i][j];
             if (questionText) { 
-              // --- === MODIFIED LOGIC (v1.2) === ---
+              // --- === MODIFIED LOGIC (This is the fix) === ---
               if (questionText.startsWith("# ")) {
                 // It's a header
                 questions.push({
@@ -229,6 +221,10 @@ function doPost(e) {
 }
 
 // --- AUTOMATED TRIGGER FUNCTION ---
+/**
+ * This function should be run on a time-based trigger (e.g., every 5 minutes).
+ * It checks for overdue workers and sends escalating email alerts.
+ */
 function checkOverdueWorkers() {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -241,12 +237,14 @@ function checkOverdueWorkers() {
     var now = new Date();
     var phoneHeaders = ["Worker Phone Number", "Emergency Contact Number", "Escalation Contact Number"]; 
 
+    // Define all "resolved" statuses
     var resolvedStatuses = ['DEPARTED', 'SAFE - MANUALLY CLEARED', 'MONITOR_CLEARED_ALERT'];
 
     for (var i = 1; i < data.length; i++) {
       var row = data[i];
       var worker = {};
       headers.forEach(function(header, j) {
+        // Remove leading quote from phone numbers for email function
         if (phoneHeaders.indexOf(header) > -1 && typeof row[j] === 'string' && row[j].charAt(0) === "'") {
             worker[header] = row[j].substring(1);
         } else {
@@ -300,6 +298,9 @@ function checkOverdueWorkers() {
 }
 
 // --- EMAIL HELPER FUNCTION ---
+/**
+ * Sends a formatted alert email.
+ */
 function sendAlertEmail(workerData, alertType) {
   var recipient = alertType === 'ESCALATION_SENT' ? workerData['Escalation Contact Email'] : workerData['Emergency Contact Email'];
   var subject = '';
@@ -396,7 +397,7 @@ function generateMonthlyReport() {
   }
 
   // 1. Get the report criteria from the 'Reports' sheet
-  let monthStr = reportSheet.getRange("B2").getValue(); // e.g., "2025-10" or "2025/10/15"
+  let monthStr = reportSheet.getRange("B2").getValue(); 
   const companyName = reportSheet.getRange("B1").getValue();
   
   if (!companyName || !monthStr) {
@@ -417,7 +418,7 @@ function generateMonthlyReport() {
   
   const parts = monthStr.split('-');
   const year = parseInt(parts[0], 10);
-  const month = parseInt(parts[1], 10) - 1; // JS months are 0-11
+  const month = parseInt(parts[1], 10) - 1; 
 
   const startDate = new Date(Date.UTC(year, month, 1)); 
   const endDate = new Date(Date.UTC(year, month + 1, 1)); 
@@ -530,7 +531,7 @@ function generateMonthlyReport() {
   SpreadsheetApp.getUi().alert("Report Generated!");
 }
 
-// --- NEW WSA MASTER REPORTING FUNCTION (v3 - Fixes Order & 0s) ---
+// --- WSA MASTER REPORTING FUNCTION (v2.1 - ORDERING FIX) ---
 /**
  * Generates a master report for ALL companies for a specified month.
  * Assumes a sheet named "Master Report" exists.
@@ -582,7 +583,6 @@ function generateMasterMonthlyReport() {
   }
 
   // --- NEW: Define Standard Checklist (must match Worker App) ---
-  // We only need the question text for matching
   const STANDARD_CHECKLIST = [
         "Safety check completed",
         "Client goals reviewed",
@@ -703,7 +703,7 @@ function generateMasterMonthlyReport() {
           if (report.checklist) {
             // --- MODIFIED: Only increment counts for questions in the master list ---
             for (const question in report.checklist) {
-              // Check if this question is in our master list AND was ticked true
+              // Check if this question is in our master list and was ticked true
               if (coData.questionTally.hasOwnProperty(question) && report.checklist[question] === true) { 
                 coData.questionTally[question]++; // Increment the pre-initialized count
               }
@@ -711,7 +711,7 @@ function generateMasterMonthlyReport() {
           }
           
           coData.notes.push({
-              date: departureTime.toLocaleDateString(), 
+              date: departureTime, // Store as Date object for sorting
               worker: row[workerCol], 
               note: report.notes || "", 
               durationMins: (durationMs / (1000 * 60)) 
@@ -722,7 +722,7 @@ function generateMasterMonthlyReport() {
         }
       } else {
          coData.notes.push({
-              date: departureTime.toLocaleDateString(), 
+              date: departureTime, 
               worker: row[workerCol], 
               note: "--- No Report Data Submitted ---",
               durationMins: (durationMs / (1000 * 60))
@@ -788,8 +788,7 @@ function generateMasterMonthlyReport() {
     let monthTotalMinutes = 0; 
     
     if (coData.notes.length > 0) {
-        // Sort notes by date
-        coData.notes.sort((a,b) => new Date(a.date) - new Date(b.date)); 
+        coData.notes.sort((a,b) => a.date.getTime() - b.date.getTime()); // Sort notes by date
         coData.notes.forEach(noteEntry => {
             reportSheet.getRange(outputRow, 1).setValue(noteEntry.date).setNumberFormat("yyyy-mm-dd"); // Format date cell
             reportSheet.getRange(outputRow, 2).setValue(noteEntry.worker);
@@ -799,7 +798,7 @@ function generateMasterMonthlyReport() {
             outputRow++;
         });
     } else {
-         reportSheet.getRange(outputRow, 1).setValue("No notes recorded for this period.").setFontStyle("italic");
+         reportSheet.getRange(outputRow, 1, 1, 4).setValue("No notes recorded for this period.").setFontStyle("italic").merge();
          outputRow++;
     }
     
@@ -812,8 +811,8 @@ function generateMasterMonthlyReport() {
   // Auto-resize columns
   reportSheet.autoResizeColumn(1);
   reportSheet.autoResizeColumn(2);
-  reportSheet.autoResizeColumn(3); // Resize new Note column
-  reportSheet.autoResizeColumn(4); // Resize new Duration column
+  reportSheet.setColumnWidth(3, 350); // Set a fixed width for the notes column
+  reportSheet.autoResizeColumn(4); 
   
   SpreadsheetApp.getUi().alert("Master Report Generated!");
 }
