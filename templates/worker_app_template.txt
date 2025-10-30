@@ -283,11 +283,11 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     
     // --- WSA: Standard Checklist (Updated to object format) ---
     const STANDARD_CHECKLIST = [
-        { type: "header", text: "Standard Visit" },
-        { type: "checkbox", text: "Safety check completed" },
-        { type: "checkbox", text: "Client goals reviewed" },
-        { type: "checkbox", text: "Next appointment scheduled" },
-        { type: "checkbox", text: "Visit notes recorded" }
+        { "type": "header", "text": "Standard Visit Report" },
+        { "type": "checkbox", "text": "Safety check completed" },
+        { "type": "checkbox", "text": "Client goals reviewed" },
+        { "type": "checkbox", "text": "Next appointment scheduled" },
+        { "type": "checkbox", "text": "Visit notes recorded" }
     ];
     
     // --- TEMPLATE PLACEHOLDERS ---
@@ -1234,6 +1234,8 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             hideModals();
 
             if (useCustomForm && companyName) {
+                 // Force a re-sync for this company in case questions changed
+                delete state.cachedForms[companyName]; 
                 fetchForm(companyName);
             }
         });
