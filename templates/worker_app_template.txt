@@ -51,12 +51,10 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     </div>
 
 <header class="flex justify-between items-center mb-4 relative z-10 flex-shrink-0">
-    <!-- === UPDATED HEADER TO INCLUDE LOGO === -->
     <div class="flex items-center">
         <img src="https://i.postimg.cc/dVmVg3Pn/favicon-logo-for-LWSApp.png" alt="Logo" class="h-8 w-8 mr-3 rounded" onerror="this.style.display='none'"> 
         <h1 class="text-2xl font-bold text-blue-400">Workplace Support App</h1>
     </div>
-    <!-- === END UPDATED HEADER === -->
 <div class="flex items-center space-x-1">
 <button type="button" id="infoBtn" class="p-3 rounded-full hover:bg-gray-700"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-info"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></button>
 <button type="button" id="settingsBtn" class="p-3 rounded-full hover:bg-gray-700"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 0 2.82l-.15.08a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l-.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1 0-2.82l.15.08a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>
@@ -276,7 +274,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
         selectedLocationId: null, 
         visitDurationMinutes: 0, 
         activeVisit: null,
-        cachedForms: {}, // Stores custom checklists { "CompanyName": ["Q1", "Q2"] }
+        cachedForms: {}, // Stores custom checklists { "CompanyName": [{"type":"header", "text":"Q1"}] }
         pendingUploads: [] // Stores visit report data submitted offline
     };
     const DURATION_STEPS = [0, 10, 15, 20, 30, 45, 60, 75, 90, 105, 120, 150, 180, 240, 300];
@@ -286,8 +284,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
         { "type": "header", "text": "Standard Visit Report" },
         { "type": "checkbox", "text": "Safety check completed" },
         { "type": "checkbox", "text": "Client goals reviewed" },
-        { "type": "checkbox", "text": "Next appointment scheduled" },
-        { "type": "checkbox", "text": "Visit notes recorded" }
+        { "type": "checkbox", "text": "Next appointment scheduled" }
     ];
     
     // --- TEMPLATE PLACEHOLDERS ---
@@ -371,7 +368,6 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     function hideModals() { modals.backdrop.classList.add('hidden'); modals.backdrop.classList.remove('flex'); }
     function showAlert(title, message) { document.getElementById('alertModalTitle').textContent = title; document.getElementById('alertModalMessage').textContent = message; showModal('alert'); }
     
-    // --- UPDATED loadState (WSA v1.1 FIX) ---
     function loadState() { 
         const savedState = JSON.parse(localStorage.getItem('loneWorkerState')); 
         
@@ -385,12 +381,9 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             pendingUploads: []
         };
         
-        // Merge saved state onto default state
         state = { ...defaultState, ...savedState };
-        // Deep merge settings object
         state.settings = { ...defaultState.settings, ...(savedState ? savedState.settings : {}) };
 
-        // --- ROBUSTNESS FIX: Ensure arrays/objects are correct type ---
         if (!Array.isArray(state.locations)) {
             console.warn("Locations in localStorage was not an array, resetting.");
             state.locations = [];
@@ -403,9 +396,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
              console.warn("CachedForms in localStorage was not an object, resetting.");
             state.cachedForms = {};
         }
-        // --- END FIX ---
         
-        // Ensure locations array elements have new properties
         state.locations = state.locations.map(loc => ({
             ...loc,
             companyName: loc.companyName || "",
@@ -426,16 +417,14 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
                 companyName: 'Internal', 
                 useCustomForm: false 
             }); 
-            // Note: saveState() is not called here, will be called after URL prefill
         } 
         
         const prefilledUrl = "%%GOOGLE_SHEET_URL%%";
         if (prefilledUrl.startsWith('http') && !state.settings.googleSheetUrl) {
             state.settings.googleSheetUrl = prefilledUrl;
         }
-        saveState(); // Save state once after all initialization
+        saveState(); 
     }
-    // --- END UPDATED loadState ---
 
     function saveState() { localStorage.setItem('loneWorkerState', JSON.stringify(state)); }
     
@@ -973,8 +962,8 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
                 console.log("Using cached custom form for", location.companyName);
                 checklistItems = cachedForm; // Use the cached array of objects
                 buildReportForm(checklistItems);
-            } else if (cachedForm) { // It's cached but empty, meaning no custom form exists
-                 console.log("Using standard form (custom form was empty in cache).");
+            } else if (cachedForm) { // It's cached but empty, or not an array
+                 console.log("Using standard form (custom form was empty or invalid in cache).");
                  buildReportForm(checklistItems); // Use standard
             } else {
                 // If not in cache, show error (we don't fetch on depart, only on sync)
@@ -995,10 +984,20 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     // --- UPDATED buildReportForm (WSA v1.2) ---
     function buildReportForm(items) {
          reportFormChecklists.innerHTML = items.map((item, index) => {
+            // Check if item is valid and has a type
+            if (!item || !item.type) {
+                 // Fallback for old string-based standard checklist (just in case)
+                 const questionText = (typeof item === 'string') ? item : `Invalid Item ${index}`;
+                 return `<label for="check-${index}" class="flex items-center p-2 bg-gray-900 rounded-md cursor-pointer">
+                    <input id="check-${index}" name="${questionText}" type="checkbox" class="h-5 w-5 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500">
+                    <span class="ml-3 text-gray-300">${questionText}</span>
+                </label>`;
+            }
+
             if (item.type === 'header') {
                 // Render a header
                 return `<h3 class="text-lg font-semibold text-blue-300 mt-4 mb-2">${item.text}</h3>`;
-            } else { // Default to checkbox
+            } else { // Default to checkbox (item.type === 'checkbox')
                 // Render a checkbox
                 return `<label for="check-${index}" class="flex items-center p-2 bg-gray-900 rounded-md cursor-pointer">
                     <input id="check-${index}" name="${item.text}" type="checkbox" class="h-5 w-5 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500">
@@ -1013,7 +1012,6 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     /**
      * Gathers report data and calls depart()
      */
-    // --- UPDATED submitReport (WSA v1.2) ---
     function submitReport() {
         if (!state.activeVisit) return; // Check again in case
         const location = state.locations.find(l => l.id === state.activeVisit.locationId);
