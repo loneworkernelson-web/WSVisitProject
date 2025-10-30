@@ -51,7 +51,12 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     </div>
 
 <header class="flex justify-between items-center mb-4 relative z-10 flex-shrink-0">
-<h1 class="text-2xl font-bold text-blue-400">Workplace Support App</h1>
+    <!-- === UPDATED HEADER TO INCLUDE LOGO === -->
+    <div class="flex items-center">
+        <img src="https://i.postimg.cc/dVmVg3Pn/favicon-logo-for-LWSApp.png" alt="Logo" class="h-8 w-8 mr-3 rounded" onerror="this.style.display='none'"> 
+        <h1 class="text-2xl font-bold text-blue-400">Workplace Support App</h1>
+    </div>
+    <!-- === END UPDATED HEADER === -->
 <div class="flex items-center space-x-1">
 <button type="button" id="infoBtn" class="p-3 rounded-full hover:bg-gray-700"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-info"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></button>
 <button type="button" id="settingsBtn" class="p-3 rounded-full hover:bg-gray-700"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-settings"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 0 2.82l-.15.08a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l-.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1 0-2.82l.15.08a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></button>
@@ -262,15 +267,17 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
 </div>
 <script>
     let pages, modals, locationList, arrivedBtn, durationSlider, durationDisplay, infoBtn, settingsBtn, closeSettingsBtn, addLocationBtn, saveSettingsBtn, closeInfoModalBtn, cancelLocationBtn, saveLocationBtn, deleteLocationBtn, useCurrentLocationBtn, panicBtn, iamSafeBtn, departBtn, extendBtn, pinInput, confirmPinBtn, cancelPinBtn, alertModalOkBtn, checkinOkBtn, startReminderBanner;
+    // --- WSA: Added new modal elements ---
     let reportModal, reportModalTitle, reportFormContainer, reportFormChecklists, reportNotes, reportLoading, cancelReportBtn, submitReportBtn, uploadQueueBanner;
+    // --- WSA: Added new state properties ---
     let state = { 
         settings: { workerName: '', workerPhone: '', emergencyName: '', emergencyPhone: '', emergencyEmail: '', escalationName: '', escalationPhone: '', escalationEmail: '', pinCode: '', duressPin: '', googleSheetUrl: '' }, 
         locations: [], 
         selectedLocationId: null, 
         visitDurationMinutes: 0, 
         activeVisit: null,
-        cachedForms: {}, 
-        pendingUploads: [] 
+        cachedForms: {}, // Stores custom checklists { "CompanyName": ["Q1", "Q2"] }
+        pendingUploads: [] // Stores visit report data submitted offline
     };
     const DURATION_STEPS = [0, 10, 15, 20, 30, 45, 60, 75, 90, 105, 120, 150, 180, 240, 300];
     
@@ -293,7 +300,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     let synth, checkinCountdownInterval;
     let lastBatteryReportTime = 0; 
     let mainScreenReminderTimer = null;
-    let isSyncing = false; 
+    let isSyncing = false; // --- WSA: Syncing flag ---
 
     async function initAudio() { if (synth || (Tone.context && Tone.context.state === 'running')) return; try { await Tone.start(); synth = new Tone.Synth().toDestination(); console.log("Audio context started"); } catch (e) { console.error("Could not start audio context:", e); } }
     async function playSoundAndVibrate(action) {
@@ -985,6 +992,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     /**
      * Helper to build the checklist HTML from an array of objects.
      */
+    // --- UPDATED buildReportForm (WSA v1.2) ---
     function buildReportForm(items) {
          reportFormChecklists.innerHTML = items.map((item, index) => {
             if (item.type === 'header') {
@@ -1005,6 +1013,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     /**
      * Gathers report data and calls depart()
      */
+    // --- UPDATED submitReport (WSA v1.2) ---
     function submitReport() {
         if (!state.activeVisit) return; // Check again in case
         const location = state.locations.find(l => l.id === state.activeVisit.locationId);
