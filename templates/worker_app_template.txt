@@ -262,26 +262,25 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
 </div>
 <script>
     let pages, modals, locationList, arrivedBtn, durationSlider, durationDisplay, infoBtn, settingsBtn, closeSettingsBtn, addLocationBtn, saveSettingsBtn, closeInfoModalBtn, cancelLocationBtn, saveLocationBtn, deleteLocationBtn, useCurrentLocationBtn, panicBtn, iamSafeBtn, departBtn, extendBtn, pinInput, confirmPinBtn, cancelPinBtn, alertModalOkBtn, checkinOkBtn, startReminderBanner;
-    // --- WSA: Added new modal elements ---
     let reportModal, reportModalTitle, reportFormContainer, reportFormChecklists, reportNotes, reportLoading, cancelReportBtn, submitReportBtn, uploadQueueBanner;
-    // --- WSA: Added new state properties ---
     let state = { 
         settings: { workerName: '', workerPhone: '', emergencyName: '', emergencyPhone: '', emergencyEmail: '', escalationName: '', escalationPhone: '', escalationEmail: '', pinCode: '', duressPin: '', googleSheetUrl: '' }, 
         locations: [], 
         selectedLocationId: null, 
         visitDurationMinutes: 0, 
         activeVisit: null,
-        cachedForms: {}, // Stores custom checklists { "CompanyName": ["Q1", "Q2"] }
-        pendingUploads: [] // Stores visit report data submitted offline
+        cachedForms: {}, 
+        pendingUploads: [] 
     };
     const DURATION_STEPS = [0, 10, 15, 20, 30, 45, 60, 75, 90, 105, 120, 150, 180, 240, 300];
     
-    // --- WSA: Standard Checklist ---
+    // --- WSA: Standard Checklist (Updated to object format) ---
     const STANDARD_CHECKLIST = [
-        "Safety check completed",
-        "Client goals reviewed",
-        "Next appointment scheduled",
-        "Visit notes recorded"
+        { type: "header", text: "Standard Visit" },
+        { type: "checkbox", text: "Safety check completed" },
+        { type: "checkbox", text: "Client goals reviewed" },
+        { type: "checkbox", text: "Next appointment scheduled" },
+        { type: "checkbox", text: "Visit notes recorded" }
     ];
     
     // --- TEMPLATE PLACEHOLDERS ---
@@ -294,7 +293,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     let synth, checkinCountdownInterval;
     let lastBatteryReportTime = 0; 
     let mainScreenReminderTimer = null;
-    let isSyncing = false; // --- WSA: Syncing flag ---
+    let isSyncing = false; 
 
     async function initAudio() { if (synth || (Tone.context && Tone.context.state === 'running')) return; try { await Tone.start(); synth = new Tone.Synth().toDestination(); console.log("Audio context started"); } catch (e) { console.error("Could not start audio context:", e); } }
     async function playSoundAndVibrate(action) {
@@ -958,15 +957,18 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
         reportNotes.value = ''; // Clear notes
         reportFormChecklists.innerHTML = ''; // Clear old checklist
 
-        let checklistQuestions = STANDARD_CHECKLIST; // Default to standard
+        let checklistItems = STANDARD_CHECKLIST; // Default to standard (which is now array of objects)
 
         if (location.useCustomForm && location.companyName) {
             // Try to get form from cache
             const cachedForm = state.cachedForms[location.companyName];
-            if (cachedForm && cachedForm.length > 0) {
+            if (cachedForm && Array.isArray(cachedForm) && cachedForm.length > 0) {
                 console.log("Using cached custom form for", location.companyName);
-                checklistQuestions = cachedForm;
-                buildReportForm(checklistQuestions);
+                checklistItems = cachedForm; // Use the cached array of objects
+                buildReportForm(checklistItems);
+            } else if (cachedForm) { // It's cached but empty, meaning no custom form exists
+                 console.log("Using standard form (custom form was empty in cache).");
+                 buildReportForm(checklistItems); // Use standard
             } else {
                 // If not in cache, show error (we don't fetch on depart, only on sync)
                 console.warn("Custom form not in cache for", location.companyName);
@@ -976,20 +978,26 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
         } else {
             // Use standard form
             console.log("Using standard form.");
-            buildReportForm(checklistQuestions);
+            buildReportForm(checklistItems);
         }
     }
     
     /**
-     * Helper to build the checklist HTML from an array of questions.
+     * Helper to build the checklist HTML from an array of objects.
      */
-    function buildReportForm(questions) {
-         reportFormChecklists.innerHTML = questions.map((q, index) => `
-            <label for="check-${index}" class="flex items-center p-2 bg-gray-900 rounded-md cursor-pointer">
-                <input id="check-${index}" name="${q}" type="checkbox" class="h-5 w-5 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500">
-                <span class="ml-3 text-gray-300">${q}</span>
-            </label>
-        `).join('');
+    function buildReportForm(items) {
+         reportFormChecklists.innerHTML = items.map((item, index) => {
+            if (item.type === 'header') {
+                // Render a header
+                return `<h3 class="text-lg font-semibold text-blue-300 mt-4 mb-2">${item.text}</h3>`;
+            } else { // Default to checkbox
+                // Render a checkbox
+                return `<label for="check-${index}" class="flex items-center p-2 bg-gray-900 rounded-md cursor-pointer">
+                    <input id="check-${index}" name="${item.text}" type="checkbox" class="h-5 w-5 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500">
+                    <span class="ml-3 text-gray-300">${item.text}</span>
+                </label>`;
+            }
+         }).join('');
         reportFormContainer.classList.remove('hidden');
         submitReportBtn.disabled = false;
     }
