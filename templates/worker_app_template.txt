@@ -224,7 +224,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
               <h3 class="font-semibold text-lg text-blue-400">7. Filing Your Report & Departing</h3>
              <ol class="list-decimal list-inside space-y-1">
                  <li>When you hold the **"DEPART & FILE REPORT"** button, a "Visit Report" form will appear.</li>
-                 <li>It will show either the standard checklist or a custom one for that company.</li>
+                 <li>It will show either the standard checklist or a custom one for that company. Custom forms may include section headers.</li>
                  <li>Tick the relevant boxes and add your visit notes.</li>
                  <li>Click **"Submit Report & Depart"**. This sends your report and ends your safety timer.</li>
                  <li><strong>Offline? No problem.</strong> If you have no internet, the app will save your report and upload it automatically the next time you open the app with a connection.</li>
@@ -369,6 +369,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     function hideModals() { modals.backdrop.classList.add('hidden'); modals.backdrop.classList.remove('flex'); }
     function showAlert(title, message) { document.getElementById('alertModalTitle').textContent = title; document.getElementById('alertModalMessage').textContent = message; showModal('alert'); }
     
+    // --- UPDATED loadState (WSA v1.1 FIX) ---
     function loadState() { 
         const savedState = JSON.parse(localStorage.getItem('loneWorkerState')); 
         
@@ -382,9 +383,12 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             pendingUploads: []
         };
         
+        // Merge saved state onto default state
         state = { ...defaultState, ...savedState };
+        // Deep merge settings object
         state.settings = { ...defaultState.settings, ...(savedState ? savedState.settings : {}) };
 
+        // --- ROBUSTNESS FIX: Ensure arrays/objects are correct type ---
         if (!Array.isArray(state.locations)) {
             console.warn("Locations in localStorage was not an array, resetting.");
             state.locations = [];
@@ -397,7 +401,9 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
              console.warn("CachedForms in localStorage was not an object, resetting.");
             state.cachedForms = {};
         }
+        // --- END FIX ---
         
+        // Ensure locations array elements have new properties
         state.locations = state.locations.map(loc => ({
             ...loc,
             companyName: loc.companyName || "",
@@ -418,14 +424,16 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
                 companyName: 'Internal', 
                 useCustomForm: false 
             }); 
+            // Note: saveState() is not called here, will be called after URL prefill
         } 
         
         const prefilledUrl = "%%GOOGLE_SHEET_URL%%";
         if (prefilledUrl.startsWith('http') && !state.settings.googleSheetUrl) {
             state.settings.googleSheetUrl = prefilledUrl;
         }
-        saveState(); 
+        saveState(); // Save state once after all initialization
     }
+    // --- END UPDATED loadState ---
 
     function saveState() { localStorage.setItem('loneWorkerState', JSON.stringify(state)); }
     
@@ -987,7 +995,6 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
          reportFormChecklists.innerHTML = items.map((item, index) => {
             // Check if item is valid and has a type
             if (!item || typeof item.text === 'undefined') {
-                 // Fallback for old/invalid data
                  console.warn("Invalid checklist item:", item);
                  return ''; // Skip this item
             }
