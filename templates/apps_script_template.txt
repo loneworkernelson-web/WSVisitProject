@@ -7,6 +7,14 @@ var SECRET_KEY = "YOUR_SECRET_KEY_HERE"; // For Monitor App
 var SPREADSHEET_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
 var VISITS_SHEET_NAME = "Visits";
 var CHECKLISTS_SHEET_NAME = "Checklists";
+// --- WSA: Hardcode standard checklist for reporting ---
+var STANDARD_CHECKLIST = [
+    "Safety check completed",
+    "Client goals reviewed",
+    "Next appointment scheduled",
+    "Visit notes recorded"
+];
+
 
 // --- WEB APP ENDPOINTS ---
 
@@ -221,10 +229,6 @@ function doPost(e) {
 }
 
 // --- AUTOMATED TRIGGER FUNCTION ---
-/**
- * This function should be run on a time-based trigger (e.g., every 5 minutes).
- * It checks for overdue workers and sends escalating email alerts.
- */
 function checkOverdueWorkers() {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -237,14 +241,12 @@ function checkOverdueWorkers() {
     var now = new Date();
     var phoneHeaders = ["Worker Phone Number", "Emergency Contact Number", "Escalation Contact Number"]; 
 
-    // Define all "resolved" statuses
     var resolvedStatuses = ['DEPARTED', 'SAFE - MANUALLY CLEARED', 'MONITOR_CLEARED_ALERT'];
 
     for (var i = 1; i < data.length; i++) {
       var row = data[i];
       var worker = {};
       headers.forEach(function(header, j) {
-        // Remove leading quote from phone numbers for email function
         if (phoneHeaders.indexOf(header) > -1 && typeof row[j] === 'string' && row[j].charAt(0) === "'") {
             worker[header] = row[j].substring(1);
         } else {
@@ -298,9 +300,6 @@ function checkOverdueWorkers() {
 }
 
 // --- EMAIL HELPER FUNCTION ---
-/**
- * Sends a formatted alert email.
- */
 function sendAlertEmail(workerData, alertType) {
   var recipient = alertType === 'ESCALATION_SENT' ? workerData['Escalation Contact Email'] : workerData['Emergency Contact Email'];
   var subject = '';
@@ -386,10 +385,6 @@ function sendAlertEmail(workerData, alertType) {
 }
 
 // --- WSA REPORTING FUNCTION (SINGLE COMPANY) ---
-/**
- * This is a helper function to be run from the spreadsheet
- * to generate a report for a specific company and month.
- */
 function generateMonthlyReport() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const reportSheet = ss.getSheetByName("Reports");
@@ -542,7 +537,7 @@ function generateMonthlyReport() {
   SpreadsheetApp.getUi().alert("Report Generated!");
 }
 
-// --- NEW WSA MASTER REPORTING FUNCTION (v2) ---
+// --- NEW WSA MASTER REPORTING FUNCTION (v3 - Fixes Order & 0s) ---
 /**
  * Generates a master report for ALL companies for a specified month.
  * Assumes a sheet named "Master Report" exists.
@@ -593,7 +588,7 @@ function generateMasterMonthlyReport() {
       reportSheet.getRange(4, 1, reportSheet.getLastRow() - 3, 10).clearContent();
   }
 
-  // --- NEW: Define Standard Checklist ---
+  // --- NEW: Define Standard Checklist (must match Worker App) ---
   const STANDARD_CHECKLIST = [
         "Safety check completed",
         "Client goals reviewed",
@@ -714,6 +709,7 @@ function generateMasterMonthlyReport() {
           if (report.checklist) {
             // --- MODIFIED: Only increment counts for questions in the master list ---
             for (const question in report.checklist) {
+              // Check if this question is in our master list AND was ticked true
               if (coData.questionTally.hasOwnProperty(question) && report.checklist[question] === true) { 
                 coData.questionTally[question]++; // Increment the pre-initialized count
               }
@@ -799,7 +795,7 @@ function generateMasterMonthlyReport() {
     
     if (coData.notes.length > 0) {
         // Sort notes by date
-        coData.notes.sort((a,b) => new Date(a.date) - new Date(b.date)); 
+        coData.notes.sort((a,b) => new Date(a.date.split('/').reverse().join('-')) - new Date(b.date.split('/').reverse().join('-'))); // Assumes DD/MM/YYYY format
         coData.notes.forEach(noteEntry => {
             reportSheet.getRange(outputRow, 1).setValue(noteEntry.date).setNumberFormat("yyyy-mm-dd"); // Format date cell
             reportSheet.getRange(outputRow, 2).setValue(noteEntry.worker);
