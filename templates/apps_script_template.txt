@@ -63,7 +63,7 @@ function doGet(e) {
             var questionText = data[i][j];
             if (questionText) { 
               // --- === MODIFIED LOGIC (This is the fix) === ---
-              if (questionText.startsWith("# ")) {
+              if (String(questionText).startsWith("# ")) {
                 // It's a header
                 questions.push({
                   "type": "header",
@@ -221,10 +221,6 @@ function doPost(e) {
 }
 
 // --- AUTOMATED TRIGGER FUNCTION ---
-/**
- * This function should be run on a time-based trigger (e.g., every 5 minutes).
- * It checks for overdue workers and sends escalating email alerts.
- */
 function checkOverdueWorkers() {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -237,14 +233,12 @@ function checkOverdueWorkers() {
     var now = new Date();
     var phoneHeaders = ["Worker Phone Number", "Emergency Contact Number", "Escalation Contact Number"]; 
 
-    // Define all "resolved" statuses
     var resolvedStatuses = ['DEPARTED', 'SAFE - MANUALLY CLEARED', 'MONITOR_CLEARED_ALERT'];
 
     for (var i = 1; i < data.length; i++) {
       var row = data[i];
       var worker = {};
       headers.forEach(function(header, j) {
-        // Remove leading quote from phone numbers for email function
         if (phoneHeaders.indexOf(header) > -1 && typeof row[j] === 'string' && row[j].charAt(0) === "'") {
             worker[header] = row[j].substring(1);
         } else {
@@ -298,9 +292,6 @@ function checkOverdueWorkers() {
 }
 
 // --- EMAIL HELPER FUNCTION ---
-/**
- * Sends a formatted alert email.
- */
 function sendAlertEmail(workerData, alertType) {
   var recipient = alertType === 'ESCALATION_SENT' ? workerData['Escalation Contact Email'] : workerData['Emergency Contact Email'];
   var subject = '';
@@ -531,7 +522,7 @@ function generateMonthlyReport() {
   SpreadsheetApp.getUi().alert("Report Generated!");
 }
 
-// --- WSA MASTER REPORTING FUNCTION (v2.1 - ORDERING FIX) ---
+// --- WSA MASTER REPORTING FUNCTION (v2.2 - ORDERING/ZERO/LAYOUT FIX) ---
 /**
  * Generates a master report for ALL companies for a specified month.
  * Assumes a sheet named "Master Report" exists.
