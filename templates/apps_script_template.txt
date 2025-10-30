@@ -64,10 +64,16 @@ function doGet(e) {
             if (questionText) { 
               // --- === MODIFIED LOGIC (This is the fix) === ---
               if (String(questionText).startsWith("# ")) {
-                // It's a header
+                // It's a header with a space
                 questions.push({
                   "type": "header",
                   "text": questionText.substring(2).trim() // Get text after "# "
+                });
+              } else if (String(questionText).startsWith("#")) {
+                 // It's a header without a space
+                 questions.push({
+                  "type": "header",
+                  "text": questionText.substring(1).trim() // Get text after "#"
                 });
               } else {
                 // It's a question
@@ -591,8 +597,8 @@ function generateMasterMonthlyReport() {
           const questions = [];
           for (let i = 1; i < checklistHeaders.length; i++) {
               if (row[i]) {
-                  // Only add non-header questions
-                  if (!row[i].startsWith("# ")) {
+                  // --- MODIFIED: Check for both # and #_ ---
+                  if (!String(row[i]).startsWith("#")) {
                      questions.push(row[i]);
                   }
               } else {
