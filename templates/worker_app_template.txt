@@ -365,7 +365,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     function hideModals() { modals.backdrop.classList.add('hidden'); modals.backdrop.classList.remove('flex'); }
     function showAlert(title, message) { document.getElementById('alertModalTitle').textContent = title; document.getElementById('alertModalMessage').textContent = message; showModal('alert'); }
     
-    // --- UPDATED loadState ---
+    // --- UPDATED loadState (WSA v1.1 FIX) ---
     function loadState() { 
         const savedState = JSON.parse(localStorage.getItem('loneWorkerState')); 
         
@@ -386,12 +386,15 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
 
         // --- ROBUSTNESS FIX: Ensure arrays/objects are correct type ---
         if (!Array.isArray(state.locations)) {
+            console.warn("Locations in localStorage was not an array, resetting.");
             state.locations = [];
         }
         if (!Array.isArray(state.pendingUploads)) {
+             console.warn("PendingUploads in localStorage was not an array, resetting.");
             state.pendingUploads = [];
         }
         if (typeof state.cachedForms !== 'object' || state.cachedForms === null || Array.isArray(state.cachedForms)) {
+             console.warn("CachedForms in localStorage was not an object, resetting.");
             state.cachedForms = {};
         }
         // --- END FIX ---
@@ -417,15 +420,17 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
                 companyName: 'Internal', 
                 useCustomForm: false 
             }); 
-            saveState(); 
+            // Note: saveState() is not called here, will be called after URL prefill
         } 
         
         const prefilledUrl = "%%GOOGLE_SHEET_URL%%";
         if (prefilledUrl.startsWith('http') && !state.settings.googleSheetUrl) {
             state.settings.googleSheetUrl = prefilledUrl;
-            saveState();
         }
+        saveState(); // Save state once after all initialization
     }
+    // --- END UPDATED loadState ---
+
     function saveState() { localStorage.setItem('loneWorkerState', JSON.stringify(state)); }
     
     function renderLocations() {
@@ -955,7 +960,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
 
         let checklistQuestions = STANDARD_CHECKLIST; // Default to standard
 
-        if (location.useCustomForm) {
+        if (location.useCustomForm && location.companyName) {
             // Try to get form from cache
             const cachedForm = state.cachedForms[location.companyName];
             if (cachedForm && cachedForm.length > 0) {
@@ -993,13 +998,14 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
      * Gathers report data and calls depart()
      */
     function submitReport() {
+        if (!state.activeVisit) return; // Check again in case
         const location = state.locations.find(l => l.id === state.activeVisit.locationId);
         
-        // Gather checklist data
+        // --- UPDATED: Gather all checklist data (true/false) ---
         const checklistData = {};
         const checkboxes = reportFormChecklists.querySelectorAll('input[type="checkbox"]');
         checkboxes.forEach(cb => {
-            checklistData[cb.name] = cb.checked;
+            checklistData[cb.name] = cb.checked; // Store true OR false
         });
 
         // Gather notes
@@ -1022,8 +1028,9 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
      * Fetches a single custom form from the backend (if not in cache).
      */
     async function fetchForm(companyName) {
-         if (!companyName || state.cachedForms[companyName] || !navigator.onLine) {
-             return; // Don't fetch if no name, already cached, or offline
+         if (!companyName || state.cachedForms[companyName] !== undefined || !navigator.onLine) {
+             // Do not fetch if no name, already cached (even as empty []), or offline
+             return; 
          }
          console.log(`Fetching custom form for: ${companyName}`);
          try {
@@ -1036,18 +1043,18 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
                  throw new Error(`Server responded with ${response.status}`);
              }
              const questions = await response.json();
-             if (questions && questions.length > 0) {
+             if (questions && Array.isArray(questions)) { // Check if it's an array
                  console.log(`Successfully fetched and cached form for ${companyName}`);
-                 state.cachedForms[companyName] = questions;
+                 state.cachedForms[companyName] = questions; // Cache result (even if empty [])
                  saveState();
              } else {
                  console.warn(`No custom form found in sheet for ${companyName}`);
-                 // Cache empty result to prevent re-fetching
-                 state.cachedForms[companyName] = []; 
+                 state.cachedForms[companyName] = []; // Cache empty result
                  saveState();
              }
          } catch (error) {
              console.error(`Failed to fetch form for ${companyName}:`, error);
+             // Do not cache error, allow retry on next load
          }
     }
 
@@ -1055,11 +1062,10 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
      * Loops through all locations and proactively fetches/caches custom forms.
      */
     async function syncCustomForms() {
-         if (isSyncing || !navigator.onLine) return;
+         if (isSyncing || !navigator.onLine || !state.settings.googleSheetUrl) return;
          isSyncing = true;
          console.log("Starting custom form sync...");
          
-         // Create a unique list of companies that use custom forms
          const companiesToSync = [...new Set(
              state.locations
                  .filter(loc => loc.useCustomForm && loc.companyName)
@@ -1067,8 +1073,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
          )];
 
          for (const companyName of companiesToSync) {
-             // Fetch only if not already in cache
-             if (state.cachedForms[companyName] === undefined) { // Check for undefined, allows re-fetching empty [] if needed
+             if (state.cachedForms[companyName] === undefined) { 
                  await fetchForm(companyName);
              }
          }
@@ -1080,8 +1085,8 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
      * Tries to upload any pending reports from the offline queue.
      */
     async function processUploadQueue() {
-        if (isSyncing || !navigator.onLine || state.pendingUploads.length === 0) {
-            return; // Don't run if busy, offline, or queue is empty
+        if (isSyncing || !navigator.onLine || state.pendingUploads.length === 0 || !state.settings.googleSheetUrl) {
+            return; 
         }
         isSyncing = true;
         uploadQueueBanner.classList.remove('hidden');
@@ -1106,7 +1111,6 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
              uploadQueueBanner.classList.add('hidden');
         } else {
              console.log(`${state.pendingUploads.length} items remain in queue.`);
-             // Hide banner even if some fail, will retry next load
              uploadQueueBanner.classList.add('hidden'); 
         }
     }
@@ -1147,17 +1151,15 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             });
             saveState();
             showAlert("Success", "Settings have been saved.");
-            navigate('main');
+            navigate('main'); // This will trigger syncs
         });
         addLocationBtn.addEventListener('click', () => {
             showModal('location', () => {
                 document.getElementById('locationModalTitle').textContent = 'Add New Location';
                 document.getElementById('locationName').value = '';
                 document.getElementById('locationAddress').value = '';
-                // --- WSA: Clear new location fields ---
                 document.getElementById('companyName').value = '';
                 document.getElementById('useCustomForm').checked = false;
-                // --- End WSA ---
                 document.getElementById('deleteLocationBtn').classList.add('hidden');
                 document.querySelector('#saveLocationBtn').dataset.id = '';
             });
@@ -1172,10 +1174,8 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
                     document.getElementById('locationModalTitle').textContent = 'Edit Location'; 
                     document.getElementById('locationName').value = location.name; 
                     document.getElementById('locationAddress').value = location.address; 
-                    // --- WSA: Populate new location fields ---
                     document.getElementById('companyName').value = location.companyName || '';
                     document.getElementById('useCustomForm').checked = location.useCustomForm || false;
-                    // --- End WSA ---
                     
                     if (locId === 'loc_travelling_default') {
                         document.getElementById('deleteLocationBtn').classList.add('hidden');
@@ -1202,23 +1202,20 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             const id = document.querySelector('#saveLocationBtn').dataset.id;
             const name = document.getElementById('locationName').value.trim();
             const address = document.getElementById('locationAddress').value.trim();
-            // --- WSA: Get new location fields ---
             const companyName = document.getElementById('companyName').value.trim();
             const useCustomForm = document.getElementById('useCustomForm').checked;
-            // --- End WSA ---
 
             if (!name || !address) { showAlert("Missing Info", "Please provide both a name and an address for the location."); return; }
             if (id) {
                 const index = state.locations.findIndex(l => l.id === id);
-                 if (index > -1) state.locations[index] = { ...state.locations[index], name, address, companyName, useCustomForm }; // WSA: Save new fields
+                 if (index > -1) state.locations[index] = { ...state.locations[index], name, address, companyName, useCustomForm }; 
             } else {
-                state.locations.push({ id: `loc_${Date.now()}`, name, address, companyName, useCustomForm }); // WSA: Save new fields
+                state.locations.push({ id: `loc_${Date.now()}`, name, address, companyName, useCustomForm }); 
             }
             saveState();
             renderLocations();
             hideModals();
 
-            // --- WSA: If new/edited location uses custom form, fetch it now ---
             if (useCustomForm && companyName) {
                 fetchForm(companyName);
             }
@@ -1370,7 +1367,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             pin: document.getElementById('pinModal'), 
             alert: document.getElementById('alertModal'), 
             checkin: document.getElementById('checkinModal'),
-            report: document.getElementById('reportModal') // --- WSA: Add report modal ---
+            report: document.getElementById('reportModal') 
         };
         locationList = document.getElementById('locationList');
         arrivedBtn = document.getElementById('arrivedBtn');
