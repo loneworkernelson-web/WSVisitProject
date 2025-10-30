@@ -392,7 +392,6 @@ function sendAlertEmail(workerData, alertType) {
 
 // --- WSA REPORTING FUNCTION (SINGLE COMPANY) ---
 function generateMonthlyReport() {
-// ... (This function remains unchanged) ...
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const reportSheet = ss.getSheetByName("Reports");
   const visitsSheet = ss.getSheetByName(VISITS_SHEET_NAME);
