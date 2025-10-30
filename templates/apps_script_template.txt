@@ -70,7 +70,7 @@ function doGet(e) {
           for (var j = 1; j < headers.length; j++) {
             var questionText = data[i][j];
             if (questionText) { 
-              // --- === MODIFIED LOGIC === ---
+              // --- === MODIFIED LOGIC (v1.2) === ---
               if (questionText.startsWith("# ")) {
                 // It's a header
                 questions.push({
@@ -404,7 +404,6 @@ function generateMonthlyReport() {
     return;
   }
 
-  // --- FIX: Sanitize the month string ---
   if (monthStr instanceof Date) {
       var tz = ss.getSpreadsheetTimeZone();
       monthStr = Utilities.formatDate(monthStr, tz, "yyyy-MM");
@@ -425,13 +424,11 @@ function generateMonthlyReport() {
   
   reportSheet.getRange("B2").setValue(monthStr); 
   
-  // 2. Clear old report data (from row 5 downwards)
   if (reportSheet.getLastRow() >= 5) {
       reportSheet.getRange(5, 1, reportSheet.getLastRow() - 4, 10).clearContent();
   }
 
 
-  // 3. Get all visit data
   const dataRange = visitsSheet.getDataRange();
   const allData = dataRange.getValues();
   const headers = allData.shift(); 
@@ -446,7 +443,6 @@ function generateMonthlyReport() {
       return;
   }
 
-  // 4. Process the data
   let visitCount = 0;
   const questionTally = {}; 
   const allNotes = []; 
@@ -491,7 +487,6 @@ function generateMonthlyReport() {
     }
   }
 
-  // 5. Write the report back to the "Reports" sheet
   let outputRow = 5;
   reportSheet.getRange(outputRow, 1).setValue("Report for:").setFontWeight("bold");
   reportSheet.getRange(outputRow, 2).setValue(companyName);
@@ -503,7 +498,6 @@ function generateMonthlyReport() {
   reportSheet.getRange(outputRow, 2).setValue(visitCount);
   outputRow += 2; 
 
-  // Write Checklist Totals
   reportSheet.getRange(outputRow, 1).setValue("Checklist Totals").setFontWeight("bold");
   reportSheet.getRange(outputRow, 2).setValue("Times Ticked").setFontWeight("bold");
   outputRow++;
@@ -518,7 +512,6 @@ function generateMonthlyReport() {
   
   outputRow++; 
 
-  // Write All Notes
   reportSheet.getRange(outputRow, 1).setValue("All Visit Notes").setFontWeight("bold");
   outputRow++;
   
@@ -589,6 +582,7 @@ function generateMasterMonthlyReport() {
   }
 
   // --- NEW: Define Standard Checklist (must match Worker App) ---
+  // We only need the question text for matching
   const STANDARD_CHECKLIST = [
         "Safety check completed",
         "Client goals reviewed",
@@ -795,7 +789,7 @@ function generateMasterMonthlyReport() {
     
     if (coData.notes.length > 0) {
         // Sort notes by date
-        coData.notes.sort((a,b) => new Date(a.date.split('/').reverse().join('-')) - new Date(b.date.split('/').reverse().join('-'))); // Assumes DD/MM/YYYY format
+        coData.notes.sort((a,b) => new Date(a.date) - new Date(b.date)); 
         coData.notes.forEach(noteEntry => {
             reportSheet.getRange(outputRow, 1).setValue(noteEntry.date).setNumberFormat("yyyy-mm-dd"); // Format date cell
             reportSheet.getRange(outputRow, 2).setValue(noteEntry.worker);
