@@ -284,7 +284,8 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
         { "type": "header", "text": "Standard Visit Report" },
         { "type": "checkbox", "text": "Safety check completed" },
         { "type": "checkbox", "text": "Client goals reviewed" },
-        { "type": "checkbox", "text": "Next appointment scheduled" }
+        { "type": "checkbox", "text": "Next appointment scheduled" },
+        { "type": "checkbox", "text": "Visit notes recorded" }
     ];
     
     // --- TEMPLATE PLACEHOLDERS ---
@@ -985,13 +986,10 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     function buildReportForm(items) {
          reportFormChecklists.innerHTML = items.map((item, index) => {
             // Check if item is valid and has a type
-            if (!item || !item.type) {
-                 // Fallback for old string-based standard checklist (just in case)
-                 const questionText = (typeof item === 'string') ? item : `Invalid Item ${index}`;
-                 return `<label for="check-${index}" class="flex items-center p-2 bg-gray-900 rounded-md cursor-pointer">
-                    <input id="check-${index}" name="${questionText}" type="checkbox" class="h-5 w-5 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500">
-                    <span class="ml-3 text-gray-300">${questionText}</span>
-                </label>`;
+            if (!item || typeof item.text === 'undefined') {
+                 // Fallback for old/invalid data
+                 console.warn("Invalid checklist item:", item);
+                 return ''; // Skip this item
             }
 
             if (item.type === 'header') {
