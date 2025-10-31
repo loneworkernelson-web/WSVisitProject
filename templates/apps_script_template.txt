@@ -8,7 +8,7 @@ var GEMINI_API_KEY = "YOUR_GEMINI_API_KEY_HERE"; // For AI Report Correction
 var SPREADSHEET_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
 var VISITS_SHEET_NAME = "Visits";
 var CHECKLISTS_SHEET_NAME = "Checklists";
-var REPORT_TAB_PREFIX = "Report - "; // --- NEW: Prefix for report tabs
+var REPORT_TAB_PREFIX = "Report - "; 
 
 // --- WEB APP ENDPOINTS ---
 
@@ -64,22 +64,20 @@ function doGet(e) {
           for (var j = 1; j < headers.length; j++) {
             var questionText = data[i][j];
             if (questionText) { 
-              if (String(questionText).startsWith("# ")) {
-                questions.push({
-                  "type": "header",
-                  "text": questionText.substring(2).trim() // Get text after "# "
-                });
-              } else if (String(questionText).startsWith("#")) {
-                 questions.push({
-                  "type": "header",
-                  "text": questionText.substring(1).trim() // Get text after "#"
-                });
+              var textStr = String(questionText);
+              // --- === MODIFIED LOGIC (v1.3 - Added '%') === ---
+              if (textStr.startsWith("# ")) {
+                questions.push({ "type": "header", "text": textStr.substring(2).trim() });
+              } else if (textStr.startsWith("#")) {
+                 questions.push({ "type": "header", "text": textStr.substring(1).trim() });
+              } else if (textStr.startsWith("% ")) {
+                 questions.push({ "type": "textarea", "text": textStr.substring(2).trim() });
+              } else if (textStr.startsWith("%")) {
+                 questions.push({ "type": "textarea", "text": textStr.substring(1).trim() });
               } else {
-                questions.push({
-                  "type": "checkbox",
-                  "text": questionText
-                });
+                questions.push({ "type": "checkbox", "text": textStr });
               }
+              // --- === END MODIFIED LOGIC === ---
             } else {
               break; // Stop if we hit an empty question column
             }
@@ -470,9 +468,23 @@ function generateMonthlyReport() {
               }
             }
             
+            // --- MODIFIED: Combine main note and custom notes ---
+            let combinedNotes = "";
             if (report.notes) {
-              allNotes.push(`[${departureTime.toLocaleDateString()} - ${row[workerCol]}]: ${report.notes}`);
+              combinedNotes += report.notes;
             }
+            if (report.custom_notes) {
+              for (const noteHeader in report.custom_notes) {
+                if (report.custom_notes[noteHeader]) {
+                  combinedNotes += `\n\n**${noteHeader}:** ${report.custom_notes[noteHeader]}`;
+                }
+              }
+            }
+            if (combinedNotes) {
+              allNotes.push(`[${departureTime.toLocaleDateString()} - ${row[workerCol]}]: ${combinedNotes}`);
+            }
+            // --- END MODIFIED ---
+
           } catch (e) {
             Logger.log(`Could not parse report data in row ${i + 2}: ${reportJson}`);
           }
@@ -524,16 +536,10 @@ function generateMonthlyReport() {
   SpreadsheetApp.getUi().alert("Report Generated!");
 }
 
-// --- === MODIFIED: generateMasterMonthlyReport (v2.4 - Report per Tab) === ---
-/**
- * Generates a master report for ALL companies for a specified month.
- * Creates a new, separate tab for each company's report.
- * Assumes a sheet named "Master Report" exists.
- * Input for month (e.g., 2025-10) is taken from cell B1 of "Master Report" sheet.
- */
+// --- === MODIFIED: generateMasterMonthlyReport (v2.5 - Headers & AI) === ---
 function generateMasterMonthlyReport() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const controlSheet = ss.getSheetByName("Master Report"); // Control sheet
+  const controlSheet = ss.getSheetByName("Master Report"); // Output sheet
   const visitsSheet = ss.getSheetByName(VISITS_SHEET_NAME); // Data source
   const checklistSheet = ss.getSheetByName(CHECKLISTS_SHEET_NAME);
   
@@ -543,7 +549,7 @@ function generateMasterMonthlyReport() {
   }
 
   // 1. Get the report criteria from the 'Master Report' sheet
-  let monthStr = controlSheet.getRange("B1").getValue(); // e.g., "2025-10" or "2025/10/15"
+  let monthStr = controlSheet.getRange("B1").getValue(); 
   
   if (!monthStr) {
     SpreadsheetApp.getUi().alert("Please enter a Month (YYYY-MM) in cell B1.");
@@ -564,7 +570,7 @@ function generateMasterMonthlyReport() {
   
   const parts = monthStr.split('-');
   const year = parseInt(parts[0], 10);
-  const month = parseInt(parts[1], 10) - 1; // JS months are 0-11
+  const month = parseInt(parts[1], 10) - 1; 
 
   const startDate = new Date(Date.UTC(year, month, 1)); 
   const endDate = new Date(Date.UTC(year, month + 1, 1)); 
@@ -575,13 +581,12 @@ function generateMasterMonthlyReport() {
   const allSheets = ss.getSheets();
   for (let i = 0; i < allSheets.length; i++) {
     const sheetName = allSheets[i].getName();
-    // Delete any sheet that starts with our prefix
     if (sheetName.startsWith(REPORT_TAB_PREFIX)) {
       ss.deleteSheet(allSheets[i]);
     }
   }
 
-  // 3. Define Standard Checklist (must match Worker App)
+  // 3. Define Standard Checklist (must match Worker App - only checkbox types)
   const STANDARD_CHECKLIST = [
         "Safety check completed",
         "Client goals reviewed",
@@ -590,7 +595,7 @@ function generateMasterMonthlyReport() {
   ];
   
   // 4. Cache Custom Checklists from sheet
-  const customChecklists = {}; // { "Smith & Co.": ["Q1", "Q2"] }
+  const customChecklists = {}; 
   const checklistData = checklistSheet.getDataRange().getValues();
   const checklistHeaders = checklistData.shift();
   checklistData.forEach(function(row) {
@@ -599,8 +604,10 @@ function generateMasterMonthlyReport() {
           const questions = [];
           for (let i = 1; i < checklistHeaders.length; i++) {
               if (row[i]) {
-                  if (!String(row[i]).startsWith("#")) {
-                     questions.push(row[i]);
+                  // --- MODIFIED: Check for non-header/non-note types ---
+                  const q = String(row[i]);
+                  if (!q.startsWith("#") && !q.startsWith("%")) {
+                     questions.push(q);
                   }
               } else {
                   break; 
@@ -616,9 +623,8 @@ function generateMasterMonthlyReport() {
   const allData = dataRange.getValues();
   const headers = allData.shift(); 
 
-  // Find the column indexes we need
   const companyCol = headers.indexOf("Company Name");
-  const arrivalCol = headers.indexOf("Arrival Time"); // For duration
+  const arrivalCol = headers.indexOf("Arrival Time"); 
   const departureCol = headers.indexOf("Actual Departure Time");
   const reportCol = headers.indexOf("Visit Report Data");
   const workerCol = headers.indexOf("Worker Name");
@@ -629,13 +635,13 @@ function generateMasterMonthlyReport() {
   }
 
   // 6. Process the data
-  const masterReport = {}; // Object to hold data per company
+  const masterReport = {}; 
 
   for (let i = 0; i < allData.length; i++) {
     const row = allData[i];
     
     const companyName = row[companyCol];
-    if (!companyName) continue; // Skip if no company is listed
+    if (!companyName) continue; 
 
     var departureTime = null;
     try {
@@ -687,6 +693,10 @@ function generateMasterMonthlyReport() {
            }
       }
       
+      // --- MODIFIED: Parse new report data structure ---
+      let mainNote = "--- No Report Data Submitted ---";
+      let durationMins = (durationMs / (1000 * 60));
+      
       const reportJson = row[reportCol];
       if (reportJson) {
         try {
@@ -700,42 +710,48 @@ function generateMasterMonthlyReport() {
             }
           }
           
-          coData.notes.push({
-              date: departureTime, 
-              worker: row[workerCol], 
-              note: report.notes || "", 
-              durationMins: (durationMs / (1000 * 60)) 
-          });
-          
+          // Combine main note and custom notes
+          let combinedNotes = report.notes || "";
+          if (report.custom_notes) {
+              for (const noteHeader in report.custom_notes) {
+                  if (report.custom_notes[noteHeader]) {
+                      // Format: BOLD HEADER, newline, note text
+                      combinedNotes += `\n\n**${noteHeader}:** ${report.custom_notes[noteHeader]}`;
+                  }
+              }
+          }
+          mainNote = combinedNotes.trim() || "--- No Notes Entered ---";
+
         } catch (e) {
           Logger.log(`Could not parse report data in row ${i + 2}: ${reportJson}`);
+          mainNote = "--- Error Parsing Report Data ---";
         }
-      } else {
-         coData.notes.push({
-              date: departureTime, 
-              worker: row[workerCol], 
-              note: "--- No Report Data Submitted ---",
-              durationMins: (durationMs / (1000 * 60))
-          });
       }
+      
+      coData.notes.push({
+            date: departureTime, 
+            worker: row[workerCol], 
+            note: mainNote, 
+            durationMins: durationMins
+      });
+      // --- END MODIFIED ---
     }
   }
 
   // 7. Write the consolidated report to SEPARATE TABS
-  SpreadsheetApp.flush(); // Apply all pending changes
+  SpreadsheetApp.flush(); 
   
   const allCompanyNames = Object.keys(masterReport).sort(); 
 
   for (const companyName of allCompanyNames) {
     const coData = masterReport[companyName];
     
-    // --- === NEW: Create a new sheet for this company === ---
-    const newSheetName = REPORT_TAB_PREFIX + companyName.replace(/[\/\\?*\[\]]/g, '-').substring(0, 80); // Sanitize sheet name
+    const newSheetName = REPORT_TAB_PREFIX + companyName.replace(/[\/\\?*\[\]]/g, '-').substring(0, 80); 
     let newSheet = ss.insertSheet(newSheetName);
-    let outputRow = 1; // Start writing at row 1
-    // --- === END NEW ---
+    let outputRow = 1; 
 
     // --- === AI CORRECTION STEP === ---
+    let aiCorrectionFailed = false; 
     if (GEMINI_API_KEY && GEMINI_API_KEY !== "YOUR_GEMINI_API_KEY_HERE" && coData.notes.length > 0) {
       Logger.log("Starting AI note correction for " + companyName);
       try {
@@ -780,12 +796,15 @@ function generateMasterMonthlyReport() {
             Logger.log("Successfully corrected notes for " + companyName);
           } else {
             Logger.log("AI returned different number of notes. Skipping correction for " + companyName);
+            aiCorrectionFailed = true; 
           }
         } else {
             Logger.log("AI API Error for " + companyName + ": " + response.getContentText());
+            aiCorrectionFailed = true; 
         }
       } catch(err) {
         Logger.log("Error during AI note correction for " + companyName + ": " + err.toString());
+        aiCorrectionFailed = true; 
       }
     }
     // --- === END AI CORRECTION STEP === ---
@@ -825,6 +844,16 @@ function generateMasterMonthlyReport() {
     }
     
     outputRow++; 
+    
+    if (aiCorrectionFailed) {
+      newSheet.getRange(outputRow, 1, 1, 4).setValue("Note: AI spelling/grammar check failed. The notes below are uncorrected.")
+        .setFontColor("#ff0000") // Red
+        .setFontWeight("bold")
+        .setFontStyle("italic")
+        .setHorizontalAlignment("center")
+        .merge();
+      outputRow++;
+    }
 
     // Write All Notes (in four columns)
     newSheet.getRange(outputRow, 1).setValue("Date").setFontWeight("bold");
