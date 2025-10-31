@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OTG AppSuite - Deployment Setup Tool</title>
+    <title>WSA - Deployment Setup Tool</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
@@ -34,6 +34,21 @@
         .copy-btn.copied { background-color: #10b981; }
         /* Style for bolding key terms */
         strong { color: #60a5fa; /* A lighter blue for emphasis */ font-weight: 600; }
+        /* Styling for details dropdown */
+        details > summary {
+            cursor: pointer;
+            color: #9ca3af; /* gray-400 */
+            font-size: 0.75rem; /* text-xs */
+            margin-top: 0.25rem; /* mt-1 */
+        }
+        details > summary:hover {
+            color: #60a5fa; /* blue-400 */
+        }
+        details ol {
+            margin-top: 0.5rem; /* mt-2 */
+            padding-left: 1.5rem; /* pl-6 */
+            list-style-type: decimal;
+        }
     </style>
 </head>
 <body class="bg-gray-900 text-white min-h-screen p-4 md:p-8">
@@ -41,7 +56,7 @@
         
         <!-- Header / Step Navigation -->
         <div class="bg-gray-900 p-4 border-b border-gray-700">
-            <h1 class="text-2xl font-bold text-blue-400 text-center">On-the-Go AppSuite - Setup Tool</h1>
+            <h1 class="text-2xl font-bold text-blue-400 text-center">Workplace Support App - Setup Tool</h1>
         </div>
         <div class="step-nav flex flex-wrap justify-center bg-gray-700 p-2 shadow-inner">
             <button type="button" id="nav1" onclick="showStep(1)" class="current px-3 py-2 text-sm font-medium rounded-md m-1" disabled>Step 1: Welcome</button>
@@ -55,12 +70,11 @@
         <div class="p-6 md:p-8">
             <!-- Step 1: Welcome -->
             <div id="step1" class="step active">
-                <h2 class="text-xl font-semibold mb-4 text-blue-300">Welcome to the On-the-Go AppSuite Setup Wizard</h2>
-                <p class="text-gray-300 mb-4">This tool will guide you through creating and customizing your On-the-Go AppSuite, which combines Lone Worker Safety with Visit Reporting.</p>
+                <h2 class="text-xl font-semibold mb-4 text-blue-300">Welcome to the WSA Setup Wizard</h2>
+                <p class="text-gray-300 mb-4">This tool will guide you through creating and customizing your Workplace Support App (WSA), which combines Lone Worker Safety with Visit Reporting.</p>
                 <p class="text-gray-300 mb-6">We recommend downloading the full documentation PDF before you begin. You can also find this link in the final step.</p>
                 
-                <!-- === IMPORTANT: Update this href to your hosted PDF location === -->
-                <a href="https://russell-netizen.github.io/LWSS/templates/LWS_Documentation.pdf" download="OTG_AppSuite_Documentation.pdf" class="block w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg text-lg mb-6">
+                <a href="https://russell-netizen.github.io/LWSS/templates/LWS_Documentation.pdf" download="WSA_Documentation.pdf" class="block w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg text-lg mb-6">
                     Download Full Documentation (PDF)
                 </a>
                 
@@ -72,7 +86,7 @@
             <div id="step2" class="step">
                 <h2 class="text-xl font-semibold mb-4 text-blue-300">Step 2: Set Up Your Google Sheet</h2>
                  <ol class="list-decimal list-inside text-gray-300 space-y-3 mb-6">
-                    <li>Go to <a href="https://sheets.new" target="_blank" class="text-blue-400 hover:underline"><strong>sheets.new</strong></a> to create a new, blank Google Sheet. Give it a name (e.g., "OTG AppSuite Data").</li>
+                    <li>Go to <a href="https://sheets.new" target="_blank" class="text-blue-400 hover:underline"><strong>sheets.new</strong></a> to create a new, blank Google Sheet. Give it a name (e.g., "WSA Data").</li>
                     <li>The first sheet tab (default named "Sheet1") will be your <strong>`Visits`</strong> log. **Rename this tab to `Visits`**.</li>
                     <li>In this <strong>`Visits`</strong> sheet, click <strong>once</strong> on cell <strong>A1</strong>.</li>
                     <li>Click the "Copy Headers" button below and <strong>Paste</strong> the text. The **21 headers** should automatically fill row 1 from cell A1 to U1.</li>
@@ -167,6 +181,22 @@
                         <input type="url" id="logoUrl" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="https://your-logo.com/image.png">
                         <p class="text-xs text-gray-400 mt-1">If provided, this will replace the default icon for the Worker PWA and appear in the Monitor App header.</p> 
                     </div>
+                    <!-- === NEW: Gemini API Key Input === -->
+                    <div class="border-t border-gray-700 pt-4">
+                        <label for="geminiApiKey" class="block text-sm font-medium text-gray-300">Gemini API Key (Optional)</label>
+                        <input type="password" id="geminiApiKey" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="Paste your API key here (e.g., AIza...)">
+                        <p class="text-xs text-gray-400 mt-1">Required for AI grammar/spelling correction on reports. Leave blank to disable this feature.</p> 
+                        <details>
+                            <summary>How to get an API key</summary>
+                            <ol class="text-xs text-gray-400 space-y-1">
+                                <li>Go to <strong><a href="https://aistudio.google.com/" target="_blank" class="text-blue-400 hover:underline">Google AI Studio</a></strong> and sign in.</li>
+                                <li>On the left, click <strong>"API keys"</strong>, then <strong>"Create API key"</strong>.</li>
+                                <li>Copy the new key and paste it above.</li>
+                                <li>**Important:** You must also enable the "Generative Language API" and link a Billing account to the associated Google Cloud project (even for the free tier). See the main documentation PDF for full details.</li>
+                            </ol>
+                        </details>
+                    </div>
+                    <!-- === END NEW === -->
                 </div>
                 <button type="button" onclick="testAndProceed()" class="mt-8 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg">Test Connection & Proceed</button>
                 <p id="testStatus" class="text-center text-yellow-400 mt-4 h-4"></p>
@@ -375,7 +405,13 @@
             return;
         }
         
-        const injectedScript = template.replace('YOUR_SECRET_KEY_HERE', key);
+        // --- UPDATED: Inject Gemini API Key as well ---
+        const geminiApiKey = document.getElementById('geminiApiKey') ? document.getElementById('geminiApiKey').value : '';
+        const geminiKeyToInject = geminiApiKey || "YOUR_GEMINI_API_KEY_HERE";
+        
+        let injectedScript = template.replace('YOUR_SECRET_KEY_HERE', key);
+        injectedScript = injectedScript.replace('YOUR_GEMINI_API_KEY_HERE', geminiKeyToInject);
+        // --- END UPDATE ---
 
         if (!navigator.clipboard) {
             alert('Clipboard API not available.');
@@ -510,8 +546,9 @@
             const enableCheckinInput = document.getElementById('enableCheckin');
             const checkinIntervalInput = document.getElementById('checkinInterval');
             const logoUrlInput = document.getElementById('logoUrl');
+            const geminiApiKeyInput = document.getElementById('geminiApiKey'); // --- NEW ---
 
-            if (!urlInput || !keyInput || !firstAlertInput || !enableCheckinInput || !checkinIntervalInput || !logoUrlInput) {
+            if (!urlInput || !keyInput || !firstAlertInput || !enableCheckinInput || !checkinIntervalInput || !logoUrlInput || !geminiApiKeyInput) {
                  throw new Error("One or more configuration input elements are missing in Step 4.");
             }
 
@@ -521,6 +558,8 @@
             const checkin = enableCheckinInput.checked;
             const checkinInterval = checkinIntervalInput.value || '30'; 
             const logoUrl = logoUrlInput.value || 'https://i.postimg.cc/dVmVg3Pn/favicon-logo-for-LWSApp.png'; 
+            const geminiApiKey = geminiApiKeyInput.value; // --- NEW ---
+            const geminiKeyToInject = geminiApiKey || "YOUR_GEMINI_API_KEY_HERE"; // --- NEW ---
             
             if (!url) throw new Error("Web App URL is required.");
             if (!key) throw new Error("Secret Key is required (should be auto-filled).");
@@ -546,7 +585,7 @@
             workerApp = workerApp.replace(/%%CHECKIN_ENABLED%%/g, checkin);
             workerApp = workerApp.replace(/%%CHECKIN_INTERVAL%%/g, checkinInterval);
             // --- FIXED REGEX: Escaped slashes ---
-            workerApp = workerApp.replace(/https:\/\/i\.postimg\.cc\/dVmVg3Pn\/favicon-logo-for-LWSApp\.png/g, logoUrl.replace(/\//g, '\\/'));
+            workerApp = workerApp.replace(/https:\/\/i\.postimg\.cc\/dVmVg3Pn\/favicon-logo-for-LWSApp\.png/g, logoUrl);
             workerApp = workerApp.replace(/%%GOOGLE_SHEET_URL%%/g, url);
             
             const workerFolder = zip.folder('WorkerApp'); // Renamed folder
@@ -557,7 +596,7 @@
             // --- 2. Process Manifest ---
             let manifest = templates['manifest.json'];
             // --- FIXED REGEX: Escaped slashes ---
-            manifest = manifest.replace(/https:\/\/i\.postimg\.cc\/dVmVg3Pn\/favicon-logo-for-LWSApp\.png/g, logoUrl.replace(/\//g, '\\/'));
+            manifest = manifest.replace(/https:\/\/i\.postimg\.cc\/dVmVg3Pn\/favicon-logo-for-LWSApp\.png/g, logoUrl);
             workerFolder.file('manifest.json', manifest);
 
             // --- 3. Process Monitor App ---
@@ -574,6 +613,7 @@
             statusEl.innerText = 'Processing Apps Script file...';
             let appsScript = templates['apps_script_template.txt'];
             appsScript = appsScript.replace('YOUR_SECRET_KEY_HERE', key);
+            appsScript = appsScript.replace('YOUR_GEMINI_API_KEY_HERE', geminiKeyToInject); // --- NEW ---
             zip.file('01-PASTE_THIS_INTO_APPS_SCRIPT.txt', appsScript);
 
             // --- 5. Documentation Removed from Zip ---
