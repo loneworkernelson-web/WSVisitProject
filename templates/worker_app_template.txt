@@ -160,7 +160,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
                 <!-- Checklists will be dynamically inserted here -->
             </div>
             <div class="mt-4">
-                <label for="reportNotes" class="block text-sm font-medium text-gray-400">Brief Record of Visit</label>
+                <label for="reportNotes" class="block text-sm font-medium text-gray-400">Brief Record of Visit (Standard)</label>
                 <textarea id="reportNotes" rows="4" class="mt-1 block w-full bg-gray-900 border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"></textarea>
             </div>
         </div>
@@ -224,8 +224,8 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
               <h3 class="font-semibold text-lg text-blue-400">7. Filing Your Report & Departing</h3>
              <ol class="list-decimal list-inside space-y-1">
                  <li>When you hold the **"DEPART & FILE REPORT"** button, a "Visit Report" form will appear.</li>
-                 <li>It will show either the standard checklist or a custom one for that company. Custom forms may include section headers.</li>
-                 <li>Tick the relevant boxes and add your visit notes.</li>
+                 <li>It will show either the standard checklist or a custom one for that company. Custom forms may include section headers (like "# Section 1") and new text boxes (like "% Custom Note").</li>
+                 <li>Tick the relevant boxes and add your visit notes in all text fields.</li>
                  <li>Click **"Submit Report & Depart"**. This sends your report and ends your safety timer.</li>
                  <li><strong>Offline? No problem.</strong> If you have no internet, the app will save your report and upload it automatically the next time you open the app with a connection.</li>
             </ol>
@@ -990,7 +990,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     /**
      * Helper to build the checklist HTML from an array of objects.
      */
-    // --- UPDATED buildReportForm (WSA v1.2) ---
+    // --- UPDATED buildReportForm (WSA v1.3) ---
     function buildReportForm(items) {
          reportFormChecklists.innerHTML = items.map((item, index) => {
             // Check if item is valid and has a type
@@ -1002,6 +1002,15 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             if (item.type === 'header') {
                 // Render a header
                 return `<h3 class="text-lg font-semibold text-blue-300 mt-4 mb-2">${item.text}</h3>`;
+            
+            } else if (item.type === 'textarea') {
+                 // Render a textarea
+                return `
+                <div class="mt-4">
+                    <label for="wsa-note-${index}" class="block text-sm font-medium text-gray-300">${item.text}</label>
+                    <textarea id="wsa-note-${index}" data-header="${item.text}" class="wsa-custom-note mt-1 block w-full bg-gray-900 border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500" rows="3"></textarea>
+                </div>
+                `;
             } else { // Default to checkbox (item.type === 'checkbox')
                 // Render a checkbox
                 return `<label for="check-${index}" class="flex items-center p-2 bg-gray-900 rounded-md cursor-pointer">
@@ -1017,25 +1026,37 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     /**
      * Gathers report data and calls depart()
      */
+    // --- UPDATED submitReport (WSA v1.3) ---
     function submitReport() {
         if (!state.activeVisit) return; // Check again in case
         const location = state.locations.find(l => l.id === state.activeVisit.locationId);
         
-        // --- UPDATED: Gather all checklist data (true/false) ---
+        // 1. Gather checklist data
         const checklistData = {};
         const checkboxes = reportFormChecklists.querySelectorAll('input[type="checkbox"]');
         checkboxes.forEach(cb => {
             checklistData[cb.name] = cb.checked; // Store true OR false
         });
 
-        // Gather notes
+        // 2. Gather main note
         const notes = reportNotes.value;
+        
+        // 3. Gather custom notes
+        const customNotesData = {};
+        const customTextareas = reportFormChecklists.querySelectorAll('.wsa-custom-note');
+        customTextareas.forEach(ta => {
+            const header = ta.dataset.header; // Get the label (e.g., "Strengths Noted")
+            customNotesData[header] = ta.value; // Get the text
+        });
+
+        // 4. Combine payload
         const reportDataPayload = {
             checklist: checklistData,
-            notes: notes
+            notes: notes,
+            custom_notes: customNotesData // Add the new object
         };
 
-        // Call depart with the new report data
+        // 5. Call depart
         depart({
             "Company Name": location.companyName || "",
             "Visit Report Data": JSON.stringify(reportDataPayload)
