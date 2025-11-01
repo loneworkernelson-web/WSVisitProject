@@ -1,16 +1,14 @@
-# Project Specification: Workplace Support App (WSA) v1.3
-
-**Version:** 1.3 (Reflecting discussions up to Oct 25, 2025 - Added AI grammar/spelling correction to reporting)
+# Project Specification: On-the-Go AppSuite v1.0
 
 ## 1. Overview
 
-This document specifies a complete, free, self-hosted Workplace Support App (WSA) system. The system integrates Lone Worker Safety (LWS) features with a robust Visit Reporting module.
+This document specifies a complete, free, self-hosted On-the-Go AppSuite (OTG AppSuite). The system integrates Lone Worker Safety (LWS) features with a robust Visit Reporting module.
 
 The system is comprised of four main components:
 
 1. **The Worker App (PWA):** A mobile-first web app for workers, combining safety timers with offline-capable visit reporting.
 
-2. **The Monitoring Dashboard:** A web-based dashboard for safety monitors to view worker status in real-time.
+2. **The** Monitoring **Dashboard:** A web-based dashboard for safety monitors to view worker status in real-time.
 
 3. **The Google Apps Script Backend:** A Google Sheet-based backend that acts as the database and logic controller for both safety alerts and visit report data.
 
@@ -20,14 +18,34 @@ This specification also assumes a "Setup Tool Administrator" (the project owner)
 
 ## 2. Component 1: The Database (Google Sheet)
 
-The system requires a single Google Sheet file containing two specific tabs (sheets).
+The system requires a single Google Sheet file containing *at least* three tabs (sheets).
 
 ### 2.1. `Visits` Sheet (Data Log)
 
 * **Tab Name:** Must be exactly `Visits`.
 
-* **Headers (A1:U1):**
-  `Date,Worker Name,Worker Phone Number,Emergency Contact Name,Emergency Contact Number,Emergency Contact Email,Escalation Contact Name,Escalation Contact Number,Escalation Contact Email,Location Name,Location Address,Company Name,Arrival Time,Anticipated Departure Time,Actual Departure Time,Alarm Status,Visit Report Data,Notes,Last Known GPS,GPS Timestamp,Battery Level`
+* **Headers:** The first row (Row 1) must contain these 21 headers in this exact order (A1 to U1):
+  `Date`
+  `Worker Name`
+  `Worker Phone Number`
+  `Emergency Contact Name`
+  `Emergency Contact Number`
+  `Emergency Contact Email`
+  `Escalation Contact Name`
+  `Escalation Contact Number`
+  `Escalation Contact Email`
+  `Location Name`
+  `Location` Address
+  `Company Name`
+  `Arrival Time`
+  `Anticipated Departure Time`
+  `Actual Departure Time`
+  `Alarm Status`
+  `Visit Report Data`
+  `Notes`
+  `Last Known GPS`
+  `GPS Timestamp`
+  `Battery Level`
 
 ### 2.2. `Checklists` Sheet (Custom Form Database)
 
@@ -39,11 +57,19 @@ The system requires a single Google Sheet file containing two specific tabs (she
 
   * **Header:** `"# Header Text"` (accepts with or without a space after `#`).
 
+  * **Note Field:** `"% Note Field"` (accepts with or without a space after `%`).
+
   * **Question:** `Did you check the...`
+
+* **New Required Entry:**
+
+  * A row **must** be created with the `Company Name` set to **`(Standard)`**.
+
+  * The questions in this row will serve as the default, standard checklist for all workers.
 
 ### 2.3. `Reports` / `Master Report` Sheets (Control Panels)
 
-* The user must manually create tabs named `Reports` and `Master Report` to use the reporting functions.
+* The user must manually create tabs named `Reports` and `Master` Report to use the reporting functions.
 
 * These sheets are control panels, with `B1` and `B2` used for input (Company Name, Month).
 
@@ -55,7 +81,7 @@ This script is deployed as a Web App from the Google Sheet.
 
 * `SECRET_KEY`: Placeholder.
 
-* **`GEMINI_API_KEY`**: Placeholder. **(Optional)** If provided, enables AI grammar/spelling correction on reports.
+* `GEMINI_API_KEY`: Placeholder (Optional).
 
 * `SPREADSHEET_ID`: The ID of the Google Sheet file.
 
@@ -63,21 +89,31 @@ This script is deployed as a Web App from the Google Sheet.
 
 * `CHECKLISTS_SHEET_NAME`: `"Checklists"`
 
-* `REPORT_TAB_PREFIX`: `"Report` - "
+* `REPORT_TAB_PREFIX`: `"Report - "`
 
 ### 3.2. `doGet(e)` Function (Handles GET requests)
 
-* **Monitor Request (JSONP):** Validates `token` and returns all data from `Visits` sheet.
+This function must handle two distinct request types:
+
+* **Monitor Request (JSONP):**
+
+  * **Trigger:** Detects the presence of a `callback` parameter.
+
+  * **Security:** Validates the `token` parameter against the `SECRET_KEY`. Returns "Access Denied" if invalid.
+
+  * **Action:** Reads all data from the `Visits` sheet.
+
+  * **Output:** Returns all data as a JSONP response. Date objects are serialized to ISO strings.
 
 * **Worker App Request (JSON):**
 
-  * **Trigger:** `action=getForms` and `companyName`.
+  * **Trigger:** Detects an `action=getForms` parameter and a `companyName` parameter.
 
-  * **Security:** Keyless.
+  * **Security:** This request is **keyless**.
 
-  * **Action:** Reads `Checklists` sheet. If `companyName` matches, it reads questions.
+  * **Action:** Reads `Checklists` sheet. If `companyName` matches (e.g., `(Standard)` or `Smith & Co.`), it reads questions.
 
-  * **Parsing:** Correctly parses `"# Header"` (with or without space) as `{"type": "header", ...}` and all other non-empty cells as `{"type": "checkbox", ...}`.
+  * **Parsing:** Correctly parses `"# Header"` (with/without space) as `{"type": "header", ...}`, `"% Note Field"` (with/without space) as `{"type": "textarea", ...}` and all other cells as `{"type": "checkbox", ...}`.
 
   * **Output:** Returns a standard JSON array of these objects.
 
@@ -89,7 +125,7 @@ This script is deployed as a Web App from the Google Sheet.
 
 * **Row Identification:** Finds row by `Worker Name` and `Arrival Time`.
 
-* **Save/Update Logic:** Saves/updates all data, including `Company Name`, `Visit Report Data` (as JSON string), and parses/saves `Battery Level` from `Notes`.
+* **Save/Update Logic:** Saves/updates all data for all 21 columns, including `Company Name`, `Visit Report Data` (as JSON string), and parses/saves `Battery Level` from `Notes`.
 
 * **Alert Trigger:** Calls `sendAlertEmail` for `PANIC`, `DURESS`, or `MISSED_CHECKIN`.
 
@@ -99,7 +135,7 @@ This script is deployed as a Web App from the Google Sheet.
 
 * Ignores resolved statuses.
 
-* Finds overdue workers and sends escalating alerts via `sendAlertEmail`.
+* Finds overdue workers and sends escalating emails via `sendAlertEmail`.
 
 ### 3.5. `sendAlertEmail()` Function
 
@@ -119,110 +155,146 @@ This script is deployed as a Web App from the Google Sheet.
 
   * **Aggregates Data:** Gathers all `Visits` data for the specified month, aggregating it by `Company Name`.
 
-  * **Caches Checklists:** Fetches all custom checklist definitions from the `Checklists` sheet and a hardcoded `STANDARD_CHECKLIST`.
+  * **Caches Checklists:** Fetches all custom checklist definitions from the `Checklists` sheet and a hardcoded `STANDARD_CHECKLIST` (for fallback logic).
 
-  * **(Optional) AI Correction:** If `GEMINI_API_KEY` is provided, it sends the aggregated notes for each company to the Gemini API (`gemini-2.5-flash-preview-09-2025`) with a system prompt to correct spelling/grammar to "professional New Zealand English" and return a JSON array. If the call fails, it logs the error and proceeds with the original notes.
+  * **(Optional) AI Correction:** If `GEMINI_API_KEY` is provided, it sends the aggregated notes (including custom notes) for each company to the Gemini API for correction (NZ English).
 
-  * **Creates New Tabs:** For each company, it creates a new, formatted sheet (e.g., `"Report - Smith & Co."`).
+  * **Failure Warning:** If the AI call fails, it logs the error and places a prominent *warning* on the corresponding report tab.
 
-  * **Outputs Data:** Prints the company's stats (Total Visits, Total Hours), Checklist Totals (in correct order with `0`s), and a detailed table of `Date`, `Worker`, `Note`, and `Duration (Mins)`, with a "Total Hours" sum at the bottom.
+  * **Creates New Tabs:** For each company, it **creates a new, formatted sheet** (e.g., `"Report - Smith & Co."`).
+
+  * **Outputs Data:** Prints the company's stats (Total Visits, Total Hours), Checklist Totals (in correct order with `0`s), and a detailed table of `Date`, `Worker`, `Note` (with custom notes appended), and `Duration (Mins)`, with a "Total Hours" sum at the bottom.
 
 ## 4. Component 3: The Worker App (`worker_app_template.txt`)
 
-*(No changes from v1.2 / LWS v2.12)*
+### 4.1. `localStorage` State
 
-### 4.1. Core Features
+* `settings`: Stores user-entered settings (Name, Phone, Contacts, PINs, URL).
 
-* Location Management (with `Company Name` and `Use custom form` fields)
+* `locations`: An array of location objects. Each object must have: `id`, `name`, `address`, `companyName` (string), and `useCustomForm` (boolean).
 
-* Visit Timer ("Start" button, 1.5s hold)
+* `activeVisit`: Stores details of the current visit.
 
-* Locked Screen, Panic Button, PINs
+* `cachedForms`: An object caching form objects (e.g., `{"(Standard)": [...], "Smith & Co.": [...]}`).
 
-* **Duress on Extend/Safe:** Duress PIN triggers silent alert but appears to work.
+* `pendingUploads`: An array used as an offline queue for visit reports.
 
-* "Are You OK?" Check-ins (Escalating, Confirmation vibration)
+### 4.2. Core Features & Logic
 
-* GPS Tracking (Foreground dependent)
+* **`STANDARD_CHECKLIST_FALLBACK`:** A hardcoded array of question *objects* (e.g., `{"type":"header", ...}`) is included as a last-resort fallback.
 
-* Low Battery Reporting
+* **Safety Features (LWS):**
 
-* **"Depart & File Report" Workflow:**
+  * Visit Timer ("Start" 1.5s, "Depart" 1.5s), Locked Screen, Panic (Triple-tap), PINs.
 
-  * Triggers `showReportModal()` on 1.5s hold.
+  * **Duress on Extend/Safe:** "Extend" (1s) and "I Am Safe" (1s) prompt for PIN. Duress PIN sends silent alert.
 
-  * `buildReportForm()` correctly renders headers and checkboxes from *either* `STANDARD_CHECKLIST` (object format) or cached custom form (object format).
+  * **Check-ins:** Optional (via `%%CHECKIN_ENABLED%%`), configurable (via `%%CHECKIN_INTERVAL%%`). Features escalating sound/vibration and a confirmation vibration.
 
-  * `submitReport()` gathers *all* checkbox values (`true`/`false`) and notes into a JSON string.
+  * **Reminder Banner:** Shows a "Remember to start..." banner if on main page for 5+ minutes.
+
+* **Reporting Features (WSA):**
+
+  * **Location Modal:** Includes text input for `Company Name` and a checkbox for `Use custom form`.
+
+  * **"Depart" Workflow:** Triggers `showReportModal()` on 1.5s hold.
+
+  * **`showReportModal()`:**
+
+    * **Logic:**
+
+      1. Check location's `useCustomForm` flag.
+
+      2. If `true`, try to load `state.cachedForms[location.companyName]`.
+
+      3. If `false` (or if custom form is not found), load `state.cachedForms["(Standard)"]`.
+
+      4. If `(Standard)` is *also* not found (e.g., first-time offline), use `STANDARD_CHECKLIST_FALLBACK`.
+
+      5. If no forms exist at all, show an error.
+
+  * **`buildReportForm(items)`:** Dynamically builds the report modal's HTML. It must read `item.type` and render `<h3>` for "header", `<textarea class="wsa-custom-note">` for "textarea", and `<input type="checkbox">` for "checkbox".
+
+  * **`submitReport()`:** Gathers all checkbox values (`true`/`false`), the main note (`#reportNotes`), and all custom textarea values (`.wsa-custom-note`), and saves them into a single `Visit Report Data` JSON string.
 
 * **Offline & Syncing Logic:**
 
-  * `syncCustomForms()`: Proactively fetches and caches custom forms from backend.
+  * **`syncAllForms()`:** Runs on app load/navigate to main.
 
-  * `processUploadQueue()`: Sends any pending offline reports.
+    1. *Always* calls `fetchForm("(Standard)")` to ensure the default form is up-to-date.
 
-  * `sendToGoogleSheet()`: Queues "Departed" reports on network failure.
+    2. Fetches any *other* custom forms that are not yet cached.
 
-* Start Timer Reminder (5 min)
+  * **`fetchForm(companyName)`:** Performs a **keyless** `GET` request to `[googleSheetUrl]?action=getForms&companyName=[name]` and saves the result to `state.cachedForms`.
 
-### 4.2. Technical Specifications
+* **`processUploadQueue()`:** Runs on app load/navigate to main. Sends any pending offline reports.
 
-* PWA, Tailwind, Vanilla JS
+* **`sendToGoogleSheet()`:** Queues "Departed" reports on network failure.
 
-* `Tone.js`, `navigator.vibrate`
+* **Troubleshooting:** A "Clear Cached Forms & Data" button is included in the Settings page to clear `localStorage`.
 
-* `localStorage` (for `state` object including `cachedForms` and `pendingUploads`)
+### 4.3. Placeholders
 
-* `fetch` POST (`no-cors`) for data, `fetch` GET (keyless) for forms.
+* `%%FIRST_ALERT_MINUTES%%`, `%%CHECKIN_ENABLED%%`, `%%CHECKIN_INTERVAL%%`, `%%GOOGLE_SHEET_URL%%`
 
-* `manifest.json`, `sw.js`
-
-* Long Press Buttons (1.5s no-PIN, 1s PIN)
+* `https://i.postimg.cc/dVmVg3Pn/favicon-logo-for-LWSApp.png` (Default logo URL)
 
 ## 5. Component 4: The Monitor App (`monitor_app_template.txt`)
 
-*(No changes from v2.13 specification)*
+* **Login:** Shows `setupPage` on first use, saves URL/Key to `localStorage`.
+
+* **Header:** `%%LOGO_URL%%` placeholder, "Reset" button.
+
+* **Dashboard:** Session Log, Worker Grid.
+
+* **Card Features:** Pre-Alert Highlighting, Battery %, GPS Age, Stale Warning, Call Button.
+
+* **Alerts:** Audible alarms (`Tone.js`), Desktop Notifications (`Notification` API).
 
 ## 6. Component 5: The Deployment Tool (`setup.html`)
 
-*(No changes from v1.0 / LWS v2.8)*
+A single HTML file to be hosted online.
 
-### 6.1. Functionality
+* **Functionality:**
 
-* **Wizard Interface:** 6 steps.
+  * Loads all *code* templates (`.txt`, `.js`, `.json`) from a `./templates/` folder on `window.onload`.
 
-* **Template Fetching:** Fetches *code* templates (`.txt`, `.js`, `.json`) on load.
+  * **Step 2:** Provides a "Copy Headers" button that copies the **21-column, tab-delimited** header string. Includes instructions to create and name both the `Visits` and `Checklists` tabs, and to add the `(Standard)` row.
 
-* **Step 2:** "Copy Headers" button copies the 21-column tab-delimited string. Includes instructions to create both `Visits` and `Checklists` tabs.
+  * **Step 3:** Includes inputs for **`Secret Key`** and **`Gemini API Key (Optional)`**. The "Copy Script" button injects *both* keys into the `apps_script_template.txt`.
 
-* **Step 4:** Includes all config inputs (`checkinInterval`, etc.).
+  * **Step 4:** Includes inputs for `firstAlert`, `enableCheckin`, `checkinInterval`, and `logoUrl`.
 
-* **Zip Generation:**
+  * **`generateZip()` Function:**
 
-  * Injects config into `worker_app_template.txt`, `apps_script_template.txt`, and `manifest.json`.
+    * Validates all inputs.
 
-  * Only injects `%%LOGO_URL%%` into `monitor_app_template.txt`.
+    * Replaces placeholders in `worker_app_template.txt` (all 4 `%%...%%` placeholders + logo).
 
-  * Packages `LoneWorkerApp/`, `MonitoringDashboardApp/`, and `01-...txt` into `.zip`.
+    * Replaces placeholders in `apps_script_template.txt` (`YOUR_SECRET_KEY_HERE` and `YOUR_GEMINI_API_KEY_HERE`).
 
-  * Documentation is NOT included in the zip.
+    * Replaces placeholders in `manifest.json` (logo URL, app names).
 
-* **Step 6:** Links to the external `LWS_Documentation.pdf`.
+    * Replaces `%%LOGO_URL%%` in `monitor_app_template.txt`.
 
-## 7. Documentation (Separate PDF)
+    * Packages the modified files into a `.zip` (`OTG_AppSuite_Package.zip`) containing `WorkerApp/`, `MonitorApp/`, and `01-PASTE_THIS_INTO_APPS_SCRIPT.txt`.
 
-* A comprehensive PDF document must be created and hosted by the Setup Tool Admin.
+  * **Step 6:** Provides a hardcoded link to a separately hosted `OTG_AppSuite_Documentation.pdf`.
 
-* The `setup.html` tool links to this PDF.
+## 7. Documentation (Separate PDF & Source Files)
 
-* The documentation (based on `Deployment_Admin_Guide.md`) must instruct the Deployment Admin on:
+The Setup Tool Administrator is responsible for creating a single `OTG_AppSuite_Documentation.pdf` file. This file is linked to from `setup.html`. This PDF should be compiled from the following three source `.md` files (which are also kept in the `templates` folder):
 
-  * How to set up *both* the `Visits` (paste headers) and `Checklists` (add headers/questions) tabs.
+* **`Deployment_Admin_Guide.md`:** The end-user guide. Explains how to *use* the hosted setup tool, set up the 2-tab Google Sheet (including the `(Standard)` row), deploy the script (and update it), and host the *generated* app folders on GitHub Pages. It must explain the Monitor App's one-time login.
 
-  * How to host the apps (e.g., on GitHub Pages).
+* **`Installer Creation Guide.md`:** The verbose, beginner-friendly guide to using `Nativefier`.
 
-  * That their Monitor will need to log in once with the URL and Secret Key.
+* **`Promotional Blurb.md`:** A description of the OTG AppSuite, mentioning both safety and reporting features.
 
-  * **(New)** How to optionally create and add a `GEMINI_API_KEY` to the `Code.gs` file to enable AI-powered report correction.
+The final PDF must also be updated to instruct the Deployment Admin on:
 
-  * How to create and use the `Reports` and `Master Report` tabs and assign
+1. How to get and add the *optional* `GEMINI_API_KEY` to the `Code.gs` file (either via Step 3 of the setup tool or manually) and the required steps to **enable the API and billing** in the Google Cloud Console.
+
+2. How to create and use the `Reports` and `Master Report` tabs and assign the `generate...Report` scripts to buttons.
+
+3. How to troubleshoot common issues (e.g., PWA install failures, Monitor app connection errors, and AI grammar checking issues.)
