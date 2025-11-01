@@ -1,13 +1,10 @@
-
-<!DOCTYPE html>
-<html lang="en" class="h-full">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Workplace Support App</title>
+<title>On-the-Go App</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="WSA App">
+<meta name="apple-mobile-web-app-title" content="OTG App">
 <meta name="theme-color" content="#111827">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" href="https://i.postimg.cc/dVmVg3Pn/favicon-logo-for-LWSApp.png">
@@ -54,7 +51,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
 <header class="flex justify-between items-center mb-4 relative z-10 flex-shrink-0">
     <div class="flex items-center">
         <img src="https://i.postimg.cc/dVmVg3Pn/favicon-logo-for-LWSApp.png" alt="Logo" class="h-8 w-8 mr-3 rounded" onerror="this.style.display='none'"> 
-        <h1 class="text-2xl font-bold text-blue-400">Workplace Support App</h1>
+        <h1 class="text-2xl font-bold text-blue-400">On-the-Go App</h1>
     </div>
 <div class="flex items-center space-x-1">
 <button type="button" id="infoBtn" class="p-3 rounded-full hover:bg-gray-700"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-info"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></button>
@@ -123,12 +120,11 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
 <div><label for="duressPin" class="block text-sm font-medium text-gray-400">Duress 4-Digit PIN (Silent Alarm)</label><input type="password" id="duressPin" pattern="[0-9]*" inputmode="numeric" maxlength="4" class="mt-1 block w-full bg-gray-900 border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"></div>
 <div><label for="googleSheetUrl" class="block text-sm font-medium text-gray-400">Google Sheet Web App URL</label><input type="url" id="googleSheetUrl" class="mt-1 block w-full bg-gray-900 border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500"></div>
 <!-- === NEW: Clear Cache Button === -->
-<div class="border-t border-gray-700 pt-4 mt-4">
+<div class="border-t border-gray-700 pt-4">
     <label class="block text-sm font-medium text-gray-400">Troubleshooting</label>
-    <button type="button" id="clearCacheBtn" class="mt-2 w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 px-4 rounded-lg">Clear Cached Forms & Data</button>
-    <p class="text-xs text-gray-400 mt-1">If your report forms are not updating, click this. This will delete all cached report forms and any pending offline reports. Use only if instructed by your admin.</p>
+    <button type="button" id="clearCacheBtn" class="mt-2 w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg">Clear Cached Forms & Data</button>
+    <p class="text-xs text-gray-400 mt-1">If your custom report forms are not updating, click this button to clear the cache and re-sync with the server.</p>
 </div>
-<!-- === END NEW === -->
 </div>
 </div>
 <div class="pt-4 flex-shrink-0"><button type="button" id="saveSettingsBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg">Save Settings</button></div>
@@ -288,9 +284,9 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     const DURATION_STEPS = [0, 10, 15, 20, 30, 45, 60, 75, 90, 105, 120, 150, 180, 240, 300];
     
     // --- WSA: Standard Checklist (Updated to object format) ---
-    // --- THIS IS THE FIX ---
-    const STANDARD_CHECKLIST = [
-        { "type": "header", "text": "Standard Visit Report" },
+    // This is now just a fallback in case the (Standard) form fails to load
+    const STANDARD_CHECKLIST_FALLBACK = [
+        { "type": "header", "text": "Standard Visit Report (Fallback)" },
         { "type": "checkbox", "text": "Safety check completed" },
         { "type": "checkbox", "text": "Client goals reviewed" },
         { "type": "checkbox", "text": "Next appointment scheduled" },
@@ -347,7 +343,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
         if (page === 'main') {
             startReminderTimer(); 
             // WSA: Sync forms and process queue when returning to main
-            syncCustomForms();
+            syncAllForms(); // Renamed function
             processUploadQueue();
         }
     }
@@ -726,12 +722,10 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             sendToGoogleSheet({ "Arrival Time": state.activeVisit.arrivalTimeForSheet, "Alarm Status": 'DURESS_CODE_ACTIVATED', "Notes": 'Worker activated silent duress alarm via I AM SAFE button.' }); 
         } else {
             playSoundAndVibrate('safe');
-            // --- MODIFIED: Show report modal after I AM SAFE ---
-            showReportModal();
-            // sendToGoogleSheet({ "Arrival Time": state.activeVisit.arrivalTimeForSheet, "Actual Departure Time": now.toISOString(), "Alarm Status": 'SAFE - MANUALLY CLEARED', "Notes": 'Worker confirmed they are safe after an alert was triggered.' }); 
-            // showAlert("Confirmation", "Your status has been updated to SAFE.");
+            sendToGoogleSheet({ "Arrival Time": state.activeVisit.arrivalTimeForSheet, "Actual Departure Time": now.toISOString(), "Alarm Status": 'SAFE - MANUALLY CLEARED', "Notes": 'Worker confirmed they are safe after an alert was triggered.' }); 
+            showAlert("Confirmation", "Your status has been updated to SAFE.");
         }
-        // endVisit() is now called by submitReport()
+        endVisit(); 
     }
     function endVisit() {
         clearInterval(visitInterval);
@@ -956,6 +950,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     /**
      * Shows the report modal, building the form dynamically.
      */
+    // --- UPDATED showReportModal (WSA v1.3) ---
     function showReportModal() {
         if (!state.activeVisit) return;
 
@@ -973,35 +968,30 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
         reportNotes.value = ''; // Clear notes
         reportFormChecklists.innerHTML = ''; // Clear old checklist
 
-        let checklistItems = null; // Start with null
+        let checklistItems = null;
 
         if (location.useCustomForm && location.companyName) {
-            // Try to get form from cache
-            const cachedForm = state.cachedForms[location.companyName];
-            if (cachedForm && Array.isArray(cachedForm) && cachedForm.length > 0) {
-                console.log("Using cached custom form for", location.companyName);
-                checklistItems = cachedForm; // Use the cached array of objects
-            } else if (cachedForm) { // It's cached but empty, so use standard
-                 console.log("Using standard form (custom form was empty in cache).");
-                 checklistItems = state.cachedForms["(Standard)"]; // Use standard
-            } else {
-                // If not in cache, show error (we don't fetch on depart, only on sync)
-                console.warn("Custom form not in cache for", location.companyName);
-                checklistItems = null; // Mark as error
+            // Try to get custom form from cache
+            checklistItems = state.cachedForms[location.companyName];
+            if (checklistItems) {
+                 console.log("Using cached custom form for", location.companyName);
             }
-        } else {
-            // Use standard form
-            console.log("Using standard form.");
+        }
+        
+        // If no custom form, try to get Standard form from cache
+        if (!checklistItems) {
             checklistItems = state.cachedForms["(Standard)"];
+            if (checklistItems) {
+                 console.log("Using cached (Standard) form.");
+            }
         }
 
-        // --- Final Check ---
-        if (checklistItems && Array.isArray(checklistItems) && checklistItems.length > 0) {
+        if (checklistItems && Array.isArray(checklistItems)) {
              buildReportForm(checklistItems);
         } else {
-             // This is the critical fallback
-             console.error("Could not load a valid checklist (standard or custom).");
-             reportFormChecklists.innerHTML = `<p class="text-yellow-400">Error: Report forms not found. Please connect to the internet, restart the app, and try departing again.</p>`;
+             // CRITICAL FAILURE: No forms are cached at all.
+             console.error("No forms (Standard or Custom) are cached. Cannot build report.");
+             reportFormChecklists.innerHTML = `<p class="text-yellow-400">Error: Report forms not loaded. Please connect to the internet, return to the main screen to sync, and try departing again.</p>`;
              submitReportBtn.disabled = true;
         }
     }
@@ -1087,12 +1077,18 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     /**
      * Fetches a single custom form from the backend (if not in cache).
      */
-    async function fetchForm(companyName, isStandard = false) {
-         if (!companyName || (state.cachedForms[companyName] !== undefined && !isStandard) || !navigator.onLine) {
-             // Do not fetch if no name, already cached (and not forcing standard), or offline
-             return; 
+    async function fetchForm(companyName) {
+         if (!companyName || !navigator.onLine) {
+             return; // Don't fetch if no name or offline
          }
-         console.log(`Fetching form for: ${companyName}`);
+         
+         // Don't re-fetch if we already have it (even if it's an empty array)
+         if (state.cachedForms[companyName] !== undefined) {
+             console.log(`Skipping fetch for ${companyName}, already in cache.`);
+             return;
+         }
+
+         console.log(`Fetching custom form for: ${companyName}`);
          try {
              const url = new URL(state.settings.googleSheetUrl);
              url.searchParams.append('action', 'getForms');
@@ -1121,22 +1117,25 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     /**
      * Loops through all locations and proactively fetches/caches custom forms.
      */
-    // --- UPDATED syncAllForms ---
+    // --- UPDATED syncAllForms (WSA v1.3) ---
     async function syncAllForms() {
          if (isSyncing || !navigator.onLine || !state.settings.googleSheetUrl) return;
          isSyncing = true;
          console.log("Starting all form sync...");
          
          // 1. Always fetch the (Standard) form
-         await fetchForm("(Standard)", true); // `true` forces a fetch even if already cached
+         // We delete it first to force a re-sync, ensuring the standard form is always up-to-date
+         delete state.cachedForms["(Standard)"];
+         await fetchForm("(Standard)");
 
-         // 2. Fetch all other custom forms
+         // 2. Create a unique list of companies that use custom forms
          const companiesToSync = [...new Set(
              state.locations
                  .filter(loc => loc.useCustomForm && loc.companyName)
                  .map(loc => loc.companyName)
          )];
 
+         // 3. Fetch any custom forms not already in cache
          for (const companyName of companiesToSync) {
              if (state.cachedForms[companyName] === undefined) { 
                  await fetchForm(companyName);
@@ -1209,17 +1208,24 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
         cancelReportBtn.addEventListener('click', hideModals);
         submitReportBtn.addEventListener('click', submitReport);
         
-        // --- NEW: Clear Cache Button ---
-        document.getElementById('clearCacheBtn').addEventListener('click', () => {
-            if (confirm("Are you sure you want to clear all cached data? This will delete any pending offline reports and require an internet connection to fetch report forms again.")) {
-                 state.cachedForms = {};
-                 state.pendingUploads = [];
-                 saveState();
-                 showAlert("Cache Cleared", "All cached forms and pending reports have been deleted.");
-                 // Re-sync immediately
-                 syncAllForms();
-            }
-        });
+        // --- NEW: Listener for Clear Cache button ---
+        const clearCacheBtn = document.getElementById('clearCacheBtn');
+        if (clearCacheBtn) {
+            clearCacheBtn.addEventListener('click', () => {
+                // Don't use confirm() as it's unreliable in PWAs
+                showAlert("Confirm", "This will clear all cached report forms and log you out of the monitor app. Are you sure?");
+                // Modify OK button to perform the clear
+                alertModalOkBtn.onclick = () => {
+                    localStorage.clear(); // Clears settings, locations, all caches
+                    showAlert("Cache Cleared", "All cached data has been cleared. Please restart the app and set up your settings again.");
+                    // In a real app, we might just reload, but this is safer
+                    // location.reload(); 
+                    hideModals();
+                    alertModalOkBtn.onclick = hideModals; // Reset to default
+                };
+            });
+        }
+
 
         saveSettingsBtn.addEventListener('click', () => {
             Object.keys(state.settings).forEach(key => {
@@ -1256,8 +1262,12 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
                     
                     if (locId === 'loc_travelling_default') {
                         document.getElementById('deleteLocationBtn').classList.add('hidden');
+                        document.getElementById('useCustomForm').disabled = true; // Don't allow custom for 'Travelling'
+                        document.getElementById('companyName').disabled = true;
                     } else {
                         document.getElementById('deleteLocationBtn').classList.remove('hidden'); 
+                         document.getElementById('useCustomForm').disabled = false;
+                        document.getElementById('companyName').disabled = false;
                     }
                     
                     document.querySelector('#saveLocationBtn').dataset.id = locId; 
@@ -1493,7 +1503,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             navigate('main'); 
             renderLocations();
             // --- WSA: Sync forms and process queue on load ---
-            syncAllForms(); // Renamed from syncCustomForms
+            syncAllForms(); // Renamed
             processUploadQueue();
         } 
         initEventListeners(); 
@@ -1503,4 +1513,5 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     </script>
 </body>
 </html>
+
 
