@@ -592,7 +592,7 @@
             workerApp = workerApp.replace(/%%CHECKIN_ENABLED%%/g, checkin);
             workerApp = workerApp.replace(/%%CHECKIN_INTERVAL%%/g, checkinInterval);
             // --- FIXED REGEX: Escaped slashes ---
-            workerApp = workerApp.replace(/https://i\.postimg\.cc\/dVmVg3Pn\/favicon-logo-for-LWSApp\.png/g, logoUrl);
+            workerApp = workerApp.replace(/https:\/\/i\.postimg\.cc\/dVmVg3Pn\/favicon-logo-for-LWSApp\.png/g, logoUrl);
             workerApp = workerApp.replace(/%%GOOGLE_SHEET_URL%%/g, url);
             
             const workerFolder = zip.folder('WorkerApp'); 
