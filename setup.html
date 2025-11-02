@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WSA - Deployment Setup Tool</title>
+    <title>On-the-Go AppSuite - Setup Tool</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
@@ -56,7 +56,7 @@
         
         <!-- Header / Step Navigation -->
         <div class="bg-gray-900 p-4 border-b border-gray-700">
-            <h1 class="text-2xl font-bold text-blue-400 text-center">Workplace Support App - Setup Tool</h1>
+            <h1 class="text-2xl font-bold text-blue-400 text-center">On-the-Go AppSuite - Setup Tool</h1>
         </div>
         <div class="step-nav flex flex-wrap justify-center bg-gray-700 p-2 shadow-inner">
             <button type="button" id="nav1" onclick="showStep(1)" class="current px-3 py-2 text-sm font-medium rounded-md m-1" disabled>Step 1: Welcome</button>
@@ -70,12 +70,12 @@
         <div class="p-6 md:p-8">
             <!-- Step 1: Welcome -->
             <div id="step1" class="step active">
-                <h2 class="text-xl font-semibold mb-4 text-blue-300">Welcome to the WSA Setup Wizard</h2>
-                <p class="text-gray-300 mb-4">This tool will guide you through creating and customizing your Workplace Support App (WSA), which combines Lone Worker Safety with Visit Reporting.</p>
+                <h2 class="text-xl font-semibold mb-4 text-blue-300">Welcome to the On-the-Go AppSuite Setup Wizard</h2>
+                <p class="text-gray-300 mb-4">This tool will guide you through creating and customizing your On-the-Go AppSuite (OTG AppSuite), which combines Lone Worker Safety with Visit Reporting.</p>
                 <p class="text-gray-300 mb-6">We recommend downloading the full documentation PDF before you begin. You can also find this link in the final step.</p>
                 
-                <!-- === UPDATED LINK AND FILENAME === -->
-                <a href="./Documentation.pdf" download="Documentation.pdf" class="block w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg text-lg mb-6">
+                <!-- === IMPORTANT: Update this href to your hosted PDF location === -->
+                <a href="./Documentation.pdf" download="OTG_AppSuite_Documentation.pdf" class="block w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg text-lg mb-6">
                     Download Full Documentation (PDF)
                 </a>
                 
@@ -87,7 +87,7 @@
             <div id="step2" class="step">
                 <h2 class="text-xl font-semibold mb-4 text-blue-300">Step 2: Set Up Your Google Sheet</h2>
                  <ol class="list-decimal list-inside text-gray-300 space-y-3 mb-6">
-                    <li>Go to <a href="https://sheets.new" target="_blank" class="text-blue-400 hover:underline"><strong>sheets.new</strong></a> to create a new, blank Google Sheet. Give it a name (e.g., "WSA Data").</li>
+                    <li>Go to <a href="https://sheets.new" target="_blank" class="text-blue-400 hover:underline"><strong>sheets.new</strong></a> to create a new, blank Google Sheet. Give it a name (e.g., "OTG AppSuite Data").</li>
                     <li>The first sheet tab (default named "Sheet1") will be your <strong>`Visits`</strong> log. **Rename this tab to `Visits`**.</li>
                     <li>In this <strong>`Visits`</strong> sheet, click <strong>once</strong> on cell <strong>A1</strong>.</li>
                     <li>Click the "Copy Headers" button below and <strong>Paste</strong> the text. The **21 headers** should automatically fill row 1 from cell A1 to U1.</li>
@@ -199,7 +199,6 @@
                         <input type="url" id="logoUrl" class="mt-1 block w-full bg-gray-700 border border-gray-600 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500" placeholder="https://your-logo.com/image.png">
                         <p class="text-xs text-gray-400 mt-1">If provided, this will replace the default icon for the Worker PWA and appear in the Monitor App header.</p> 
                     </div>
-                    <!-- === MOVED: Gemini Key field removed from Step 4 === -->
                 </div>
                 <button type="button" onclick="testAndProceed()" class="mt-8 w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg">Test Connection & Proceed</button>
                 <p id="testStatus" class="text-center text-yellow-400 mt-4 h-4"></p>
@@ -219,9 +218,7 @@
                 <h2 class="text-xl font-semibold mb-4 text-green-400">Setup Complete & Documentation</h2>
                  <p class="text-gray-300 mb-4">You have successfully generated the application package!</p>
                 <p class="text-gray-300 mb-6">For detailed instructions on how to host the downloaded app folders using GitHub Pages and distribute the links to your team, please download the full documentation PDF:</p>
-                
-                <!-- === UPDATED LINK AND FILENAME === -->
-                <a href="./Documentation.pdf" download="Documentation.pdf" class="block w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg text-lg">
+                <a href="./Documentation.pdf" download="OTG_AppSuite_Documentation.pdf" class="block w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg text-lg">
                     Download Full Documentation (PDF)
                 </a>
                 <p class="text-xs text-gray-400 mt-4">
@@ -237,7 +234,6 @@
     let templatesLoaded = false; 
     const config = {
         secretKey: ""
-        // geminiKey will be read directly from Step 3 input
     };
     // === UPDATED Header String (21 columns) ===
     const headersTabDelimited = "Date\tWorker Name\tWorker Phone Number\tEmergency Contact Name\tEmergency Contact Number\tEmergency Contact Email\tEscalation Contact Name\tEscalation Contact Number\tEscalation Contact Email\tLocation Name\tLocation Address\tCompany Name\tArrival Time\tAnticipated Departure Time\tActual Departure Time\tAlarm Status\tVisit Report Data\tNotes\tLast Known GPS\tGPS Timestamp\tBattery Level";
@@ -595,7 +591,8 @@
             workerApp = workerApp.replace(/%%FIRST_ALERT_MINUTES%%/g, firstAlert);
             workerApp = workerApp.replace(/%%CHECKIN_ENABLED%%/g, checkin);
             workerApp = workerApp.replace(/%%CHECKIN_INTERVAL%%/g, checkinInterval);
-            workerApp = workerApp.replace(/https:\/\/i\.postimg\.cc\/dVmVg3Pn\/favicon-logo-for-LWSApp\.png/g, logoUrl.replace(/\//g, '\\/'));
+            // --- FIXED REGEX: Escaped slashes ---
+            workerApp = workerApp.replace(/https://i\.postimg\.cc\/dVmVg3Pn\/favicon-logo-for-LWSApp\.png/g, logoUrl);
             workerApp = workerApp.replace(/%%GOOGLE_SHEET_URL%%/g, url);
             
             const workerFolder = zip.folder('WorkerApp'); 
@@ -605,7 +602,8 @@
 
             // --- 2. Process Manifest ---
             let manifest = templates['manifest.json'];
-            manifest = manifest.replace(/https:\/\/i\.postimg\.cc\/dVmVg3Pn\/favicon-logo-for-LWSApp\.png/g, logoUrl.replace(/\//g, '\\/'));
+            // --- FIXED REGEX: Escaped slashes ---
+            manifest = manifest.replace(/https:\/\/i\.postimg\.cc\/dVmVg3Pn\/favicon-logo-for-LWSApp\.png/g, logoUrl);
             workerFolder.file('manifest.json', manifest);
 
             // --- 3. Process Monitor App ---
@@ -655,5 +653,4 @@
 </script>
 </body>
 </html>
-
 
