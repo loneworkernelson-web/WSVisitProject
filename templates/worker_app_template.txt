@@ -9,8 +9,8 @@
 <meta name="apple-mobile-web-app-title" content="OTG App">
 <meta name="theme-color" content="#111827">
 <link rel="manifest" href="manifest.json">
-<link rel="icon" type="image/png" href="https:\/\/i.postimg.cc\/pd5PQJY9\/favicon-logo-for-LWS.png">
-<link rel="apple-touch-icon" href="https:\/\/i.postimg.cc\/pd5PQJY9\/favicon-logo-for-LWS.png">
+<link rel="icon" type="image/png" href="https://i.postimg.cc/dVmVg3Pn/favicon-logo-for-LWSApp.png">
+<link rel="apple-touch-icon" href="https://i.postimg.cc/dVmVg3Pn/favicon-logo-for-LWSApp.png">
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
@@ -52,7 +52,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
 
 <header class="flex justify-between items-center mb-4 relative z-10 flex-shrink-0">
     <div class="flex items-center">
-        <img src="https:\/\/i.postimg.cc\/pd5PQJY9\/favicon-logo-for-LWS.png" alt="Logo" class="h-8 w-8 mr-3 rounded" onerror="this.style.display='none'"> 
+        <img src="https://i.postimg.cc/dVmVg3Pn/favicon-logo-for-LWSApp.png" alt="Logo" class="h-8 w-8 mr-3 rounded" onerror="this.style.display='none'"> 
         <h1 class="text-2xl font-bold text-blue-400">On-the-Go App</h1>
     </div>
 <div class="flex items-center space-x-1">
@@ -299,10 +299,10 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     ];
     
     // --- TEMPLATE PLACEHOLDERS ---
-    var FIRST_ALERT_MINUTES = 15;
+    var FIRST_ALERT_MINUTES = %%FIRST_ALERT_MINUTES%%;
     const PRE_ALERT_OFFSET = 2; 
-    var CHECKIN_ENABLED = false;
-    var CHECKIN_INTERVAL = 30; 
+    var CHECKIN_ENABLED = %%CHECKIN_ENABLED%%;
+    var CHECKIN_INTERVAL = %%CHECKIN_INTERVAL%%; 
     // --- END PLACEHOLDERS ---
 
     let synth, checkinCountdownInterval;
@@ -437,7 +437,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             // Note: saveState() is not called here, will be called after URL prefill
         } 
         
-        const prefilledUrl = "https://script.google.com/macros/s/AKfycbwqCK3KIat3Z5utKQRJZKAJpeX8VpJx6vOWElgBK9-nWadySPUGTadiThx9Ymd0Q77O/exec";
+        const prefilledUrl = "%%GOOGLE_SHEET_URL%%";
         if (prefilledUrl.startsWith('http') && !state.settings.googleSheetUrl) {
             state.settings.googleSheetUrl = prefilledUrl;
         }
@@ -511,7 +511,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             return Promise.resolve(); // Success
         }).catch(error => {
             console.error('Error sending data to Google Sheet:', error);
-            if (!isRetry && data["Alarm Status"] === 'DEPARTED') {
+            if (!isRetry && (data["Alarm Status"] === 'DEPARTED' || data["Alarm Status"] === 'SAFE - MANUALLY CLEARED')) {
                 console.log("Network failed. Queuing report.");
                 state.pendingUploads.push(payload); 
                 saveState();
@@ -564,7 +564,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     
     function handleDepartLongPress() {
         playSoundAndVibrate('depart');
-        showReportModal();
+        showReportModal(false); // false = not from an alert
     }
     
     function handleExtendLongPress() {
@@ -596,14 +596,12 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     }
     
     function handleSafeLongPress() {
-        // When "I AM SAFE" is pressed, it must also trigger the report modal
         withPinVerification((isDuress) => {
             if (isDuress) {
-                iamSafe(true); // Call iamSafe with duress flag
+                iamSafe(true); // Call iamSafe with duress flag, no report
             } else {
-                // Not duress. First, show the report modal.
-                // We will call iamSafe(false) *after* the report is submitted.
-                showReportModal(true); // Pass a flag to indicate this is post-alert
+                // Not duress. Show the report modal.
+                showReportModal(true); // true = from an alert
             }
         }, true); 
     }
@@ -999,7 +997,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
                 console.log("Using cached custom form for", location.companyName);
                 checklistItems = cachedForm; // Use the cached array of objects
             } else if (cachedForm) { // It's cached but empty, or not an array
-                 console.log("Using standard form (custom form was empty or invalid in cache).");
+                 console.log("Using (Standard) form (custom form was empty or invalid in cache).");
                  checklistItems = state.cachedForms["(Standard)"]; 
             } else {
                 // If not in cache, show error (we don't fetch on depart, only on sync)
@@ -1010,12 +1008,12 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             }
         } else {
             // Use standard form
-            console.log("Using standard form.");
+            console.log("Using (Standard) form.");
             checklistItems = state.cachedForms["(Standard)"];
         }
 
         // --- Fallback Logic ---
-        if (!checklistItems || checklistItems.length === 0) {
+        if (!checklistItems || !Array.isArray(checklistItems) || checklistItems.length === 0) {
              console.warn("Standard form not in cache or empty, using fallback.");
              checklistItems = STANDARD_CHECKLIST_FALLBACK;
         }
@@ -1139,8 +1137,10 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
          isSyncing = true;
          console.log("Starting custom form sync...");
 
-         // 1. Always fetch (Standard) form
-         await fetchForm("(Standard)");
+         // 1. Always fetch (Standard) form (if not already cached)
+         if (state.cachedForms["(Standard)"] === undefined) {
+            await fetchForm("(Standard)");
+         }
          
          // 2. Fetch all unique custom forms
          const companiesToSync = [...new Set(
