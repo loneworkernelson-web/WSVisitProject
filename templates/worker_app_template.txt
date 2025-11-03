@@ -242,8 +242,8 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
               <h3 class="font-semibold text-lg text-blue-400">8. Alerts & Duress</h3>
               <ul class="list-disc list-inside space-y-2">
                 <li>If you go overdue or miss a check-in, the system will automatically email your emergency contact.</li>
-                <li><strong>To Cancel an Alert:</strong> Press and hold the <strong>"I AM SAFE"</strong> button for 1 second and enter your **normal PIN**.</li>
-                <li><strong>Silent (Duress) Alert:</strong> If you are being forced to cancel an alert, enter your **Duress PIN** instead. The app will look like it has been cancelled/extended, but it will silently send a high-priority alert to the monitor.</li>
+                <li><strong>To Cancel an Alert:</strong> Press and hold the <strong>"I AM SAFE"</strong> button for 1 second and enter your **normal PIN**. This will clear the alert and then open the Visit Report form.</li>
+                <li><strong>Silent (Duress) Alert:</strong> If you are being forced to cancel an alert, enter your **Duress PIN** instead. The app will look like it has been cancelled, but it will silently send a high-priority alert to the monitor.</li>
             </ul>
 
         </div>
@@ -511,6 +511,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             return Promise.resolve(); // Success
         }).catch(error => {
             console.error('Error sending data to Google Sheet:', error);
+            // --- UPDATED: Queue 'SAFE' status as well ---
             if (!isRetry && (data["Alarm Status"] === 'DEPARTED' || data["Alarm Status"] === 'SAFE - MANUALLY CLEARED')) {
                 console.log("Network failed. Queuing report.");
                 state.pendingUploads.push(payload); 
@@ -595,6 +596,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
         }, true); 
     }
     
+    // --- UPDATED handleSafeLongPress (OTG v1.4) ---
     function handleSafeLongPress() {
         withPinVerification((isDuress) => {
             if (isDuress) {
@@ -614,6 +616,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             }
         }, true); 
     }
+    // --- END UPDATED handleSafeLongPress ---
 
 
     function attemptStartVisit() {
@@ -759,8 +762,9 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     async function iamSafe(isDuress, reportData = {}) { 
         if (!state.activeVisit) return; 
         const now = new Date();
+        const batteryNote = await getBatteryNote(); // Get current battery
+        
         if (isDuress) {
-            const batteryNote = await getBatteryNote();
             sendToGoogleSheet({ 
                 "Arrival Time": state.activeVisit.arrivalTimeForSheet, 
                 "Alarm Status": 'DURESS_CODE_ACTIVATED', 
@@ -768,7 +772,6 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             }); 
         } else {
             playSoundAndVibrate('safe');
-            const batteryNote = await getBatteryNote();
             const dataToSend = {
                  ...reportData,
                 "Arrival Time": state.activeVisit.arrivalTimeForSheet, 
@@ -898,18 +901,605 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     // --- END UPDATED tick ---
 
     function triggerPanicAlert() {
-// ... (existing triggerPanicAlert function) ...
-// ... (existing triggerCheckin function) ...
-// ... (existing handleCheckinOK function) ...
-// ... (existing showReportModal function) ...
-// ... (existing buildReportForm function) ...
-// ... (existing submitReport function) ...
-// ... (existing fetchForm function) ...
-// ... (existing syncAllForms function) ...
-// ... (existing processUploadQueue function) ...
-// ... (existing initEventListeners function, including clearCacheBtn) ...
-// ... (existing applyLongPress function) ...
-// ... (existing init function) ...
+        if (!state.activeVisit) return; 
+        playSoundAndVibrate('panic');
+        showAlert("PANIC ALERT SENT", "An immediate alert has been sent to your emergency contact.");
+        const sendPanic = (gpsData) => {
+             if (!state.activeVisit) return; 
+            const data = { "Arrival Time": state.activeVisit.arrivalTimeForSheet, "Alarm Status": 'EMERGENCY - PANIC BUTTON', "Notes": 'Panic button activated by worker.' };
+            if (gpsData) {
+                data["Last Known GPS"] = `${gpsData.latitude},${longitude}`;
+                data["GPS Timestamp"] = new Date().toISOString();
+                data.Notes += ' GPS successfully retrieved.';
+            } else {
+                data.Notes += ' Failed to retrieve GPS on panic.';
+            }
+            sendToGoogleSheet(data);
+            document.getElementById('alertActiveContainer').classList.remove('hidden');
+            document.getElementById('normalButtonsContainer').classList.add('hidden');
+        };
+        if ('geolocation' in navigator) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => sendPanic(position.coords),
+                () => sendPanic(null),
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        } else {
+            sendPanic(null);
+        }
+    }
+    
+    function triggerCheckin() {
+        showModal('checkin');
+        let remaining = 120; 
+        const totalDuration = 120; 
+        const countdownEl = document.getElementById('checkinCountdown');
+        countdownEl.textContent = '2:00';
+
+        if (checkinCountdownInterval) clearInterval(checkinCountdownInterval);
+
+        initAudio().then(() => {
+            if (!synth) synth = new Tone.Synth().toDestination();
+            synth.volume.value = -20; 
+        });
+        
+        if ('vibrate' in navigator) navigator.vibrate(200); 
+
+        checkinCountdownInterval = setInterval(() => {
+            remaining--;
+            const minutes = Math.floor(remaining / 60);
+            const seconds = remaining % 60;
+            countdownEl.textContent = `${minutes}:${String(seconds).padStart(2, '0')}`;
+
+            // --- Escalation Logic ---
+            const elapsedRatio = (totalDuration - remaining) / totalDuration; 
+            
+            if (synth && elapsedRatio >= 0.5) {
+                const volumeRatio = (elapsedRatio - 0.5) * 2; 
+                const gain = volumeRatio * 0.9 + 0.1; 
+                synth.volume.value = Tone.gainToDb(gain); 
+            } else if (synth) {
+                 synth.volume.value = -20; 
+            }
+
+            if (remaining <= 30 && remaining % 2 === 0 && 'vibrate' in navigator) {
+                 navigator.vibrate([300, 100, 300]); 
+            } else if (remaining > 30 && remaining % 5 === 0 && 'vibrate' in navigator) {
+                 navigator.vibrate(200); 
+            }
+            
+             if (remaining <= 60 && remaining % 3 === 0) { 
+                 playSoundAndVibrate('checkin'); 
+             } else if (remaining > 60 && remaining % 10 === 0) { 
+                  playSoundAndVibrate('checkin');
+             }
+            // --- End Escalation Logic ---
+
+
+            if (remaining <= 0) {
+                clearInterval(checkinCountdownInterval);
+                checkinCountdownInterval = null;
+                hideModals();
+                 if (!state.activeVisit) return; 
+                sendToGoogleSheet({ "Arrival Time": state.activeVisit.arrivalTimeForSheet, "Alarm Status": 'MISSED_CHECKIN', "Notes": 'Worker missed a scheduled check-in.' });
+                document.getElementById('alertActiveContainer').classList.remove('hidden');
+                document.getElementById('normalButtonsContainer').classList.add('hidden');
+                if(synth) synth.volume.value = 0; 
+            }
+        }, 1000);
+    }
+
+    function handleCheckinOK() {
+        clearInterval(checkinCountdownInterval);
+        checkinCountdownInterval = null; 
+        hideModals();
+        
+        if ('vibrate' in navigator) {
+            navigator.vibrate([50, 50, 50]); 
+        }
+
+         if (!state.activeVisit) return; 
+        state.activeVisit.nextCheckinTime = new Date().getTime() + (parseInt(CHECKIN_INTERVAL) * 60 * 1000); 
+        saveState();
+        if(synth) synth.volume.value = 0; 
+    }
+
+    // --- WSA: NEW FUNCTIONS ---
+
+    /**
+     * Shows the report modal, building the form dynamically.
+     */
+    // --- UPDATED showReportModal (OTG v1.4) ---
+    function showReportModal(isFromAlert = false) {
+        if (!state.activeVisit) return;
+
+        const location = state.locations.find(l => l.id === state.activeVisit.locationId);
+        if (!location) {
+            showAlert("Error", "Could not find location data.");
+            return;
+        }
+
+        // --- NEW: Check for "Travelling" ---
+        if (location.name === 'Travelling') {
+            console.log("Location is 'Travelling', skipping report.");
+            if (isFromAlert) {
+                iamSafe(false); // Call iamSafe with no report
+            } else {
+                depart(); // Call depart with no report
+            }
+            return; // Stop here, don't show modal
+        }
+        // --- END NEW ---
+
+        // Store if this modal was triggered from an "I AM SAFE" button
+        reportModal.dataset.isFromAlert = isFromAlert;
+
+        // Show the modal
+        showModal('report');
+        reportModalTitle.textContent = `Visit Report for: ${location.name}`;
+        reportFormContainer.classList.add('hidden');
+        reportLoading.classList.add('hidden');
+        reportNotes.value = ''; // Clear notes
+        reportFormChecklists.innerHTML = ''; // Clear old checklist
+
+        let checklistItems; 
+
+        if (location.useCustomForm && location.companyName) {
+            // Try to get form from cache
+            const cachedForm = state.cachedForms[location.companyName];
+            if (cachedForm && Array.isArray(cachedForm) && cachedForm.length > 0) {
+                console.log("Using cached custom form for", location.companyName);
+                checklistItems = cachedForm; // Use the cached array of objects
+            } else if (cachedForm) { // It's cached but empty, or not an array
+                 console.log("Using standard form (custom form was empty or invalid in cache).");
+                 checklistItems = state.cachedForms["(Standard)"]; 
+            } else {
+                // If not in cache, show error (we don't fetch on depart, only on sync)
+                console.warn("Custom form not in cache for", location.companyName);
+                reportFormChecklists.innerHTML = `<p class="text-yellow-400">Error: Custom form not found in cache. Please connect to the internet, return to the main screen to sync, and try departing again.</p>`;
+                submitReportBtn.disabled = true;
+                return; // Stop here
+            }
+        } else {
+            // Use standard form
+            console.log("Using standard form.");
+            checklistItems = state.cachedForms["(Standard)"];
+        }
+
+        // --- Fallback Logic ---
+        if (!checklistItems || checklistItems.length === 0) {
+             console.warn("Standard form not in cache or empty, using fallback.");
+             checklistItems = STANDARD_CHECKLIST_FALLBACK;
+        }
+        
+        buildReportForm(checklistItems);
+    }
+    
+    /**
+     * Helper to build the checklist HTML from an array of objects.
+     */
+    function buildReportForm(items) {
+         reportFormChecklists.innerHTML = items.map((item, index) => {
+            if (!item || typeof item.text === 'undefined') {
+                 console.warn("Invalid checklist item:", item);
+                 return ''; // Skip this item
+            }
+
+            if (item.type === 'header') {
+                return `<h3 class="text-lg font-semibold text-blue-300 mt-4 mb-2">${item.text}</h3>`;
+            
+            } else if (item.type === 'textarea') {
+                return `
+                <div class="mt-4">
+                    <label for="wsa-note-${index}" class="block text-sm font-medium text-gray-300">${item.text}</label>
+                    <textarea id="wsa-note-${index}" data-header="${item.text}" class="wsa-custom-note mt-1 block w-full bg-gray-900 border border-gray-700 rounded-md shadow-sm py-2 px-3 text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500" rows="3"></textarea>
+                </div>
+                `;
+            } else { // Default to checkbox (item.type === 'checkbox')
+                return `<label for="check-${index}" class="flex items-center p-2 bg-gray-900 rounded-md cursor-pointer">
+                    <input id="check-${index}" name="${item.text}" type="checkbox" class="h-5 w-5 text-blue-600 bg-gray-700 border-gray-600 rounded focus:ring-blue-500">
+                    <span class="ml-3 text-gray-300">${item.text}</span>
+                </label>`;
+            }
+         }).join('');
+        reportFormContainer.classList.remove('hidden');
+        submitReportBtn.disabled = false;
+    }
+
+    /**
+     * Gathers report data and calls depart() or iamSafe()
+     */
+    function submitReport() {
+        if (!state.activeVisit) return; 
+        const location = state.locations.find(l => l.id === state.activeVisit.locationId);
+        
+        const checklistData = {};
+        const checkboxes = reportFormChecklists.querySelectorAll('input[type="checkbox"]');
+        checkboxes.forEach(cb => {
+            checklistData[cb.name] = cb.checked; // Store true OR false
+        });
+
+        const notes = reportNotes.value;
+        
+        const customNotesData = {};
+        const customTextareas = reportFormChecklists.querySelectorAll('.wsa-custom-note');
+        customTextareas.forEach(ta => {
+            const header = ta.dataset.header; 
+            customNotesData[header] = ta.value; 
+        });
+
+        const reportDataPayload = {
+            checklist: checklistData,
+            notes: notes,
+            custom_notes: customNotesData 
+        };
+
+        const finalData = {
+            "Company Name": location.companyName || "",
+            "Visit Report Data": JSON.stringify(reportDataPayload)
+        };
+
+        // Check if we came from an alert
+        const isFromAlert = reportModal.dataset.isFromAlert === 'true';
+        if (isFromAlert) {
+            iamSafe(false, finalData); // Call iamSafe with the report data
+        } else {
+            depart(finalData); // Call depart with the report data
+        }
+        
+        hideModals();
+    }
+
+    /**
+     * Fetches a single custom form from the backend (if not in cache).
+     */
+    async function fetchForm(companyName) {
+         if (!companyName || state.cachedForms[companyName] !== undefined || !navigator.onLine || !state.settings.googleSheetUrl) {
+             return; 
+         }
+         console.log(`Fetching custom form for: ${companyName}`);
+         try {
+             const url = new URL(state.settings.googleSheetUrl);
+             url.searchParams.append('action', 'getForms');
+             url.searchParams.append('companyName', companyName);
+             
+             const response = await fetch(url.href); 
+             if (!response.ok) {
+                 throw new Error(`Server responded with ${response.status}`);
+             }
+             const items = await response.json();
+             if (items && Array.isArray(items)) { 
+                 console.log(`Successfully fetched and cached form for ${companyName}`);
+                 state.cachedForms[companyName] = items; // Cache result (even if empty [])
+                 saveState();
+             } else {
+                 console.warn(`No custom form found in sheet for ${companyName}`);
+                 state.cachedForms[companyName] = []; // Cache empty result
+                 saveState();
+             }
+         } catch (error) {
+             console.error(`Failed to fetch form for ${companyName}:`, error);
+         }
+    }
+
+    /**
+     * Loops through all locations and proactively fetches/caches custom forms.
+     * Also fetches the (Standard) form.
+     */
+    async function syncAllForms() {
+         if (isSyncing || !navigator.onLine || !state.settings.googleSheetUrl) return;
+         isSyncing = true;
+         console.log("Starting custom form sync...");
+
+         // 1. Always fetch (Standard) form (if not cached)
+         if (state.cachedForms["(Standard)"] === undefined) {
+            await fetchForm("(Standard)");
+         }
+         
+         // 2. Fetch all unique custom forms
+         const companiesToSync = [...new Set(
+             state.locations
+                 .filter(loc => loc.useCustomForm && loc.companyName)
+                 .map(loc => loc.companyName)
+         )];
+
+         for (const companyName of companiesToSync) {
+             if (state.cachedForms[companyName] === undefined) { 
+                 await fetchForm(companyName);
+             }
+         }
+         isSyncing = false;
+         console.log("Custom form sync complete.");
+    }
+    
+    /**
+     * Tries to upload any pending reports from the offline queue.
+     */
+    async function processUploadQueue() {
+        if (isSyncing || !navigator.onLine || state.pendingUploads.length === 0 || !state.settings.googleSheetUrl) {
+            return; 
+        }
+        isSyncing = true;
+        uploadQueueBanner.classList.remove('hidden');
+        console.log(`Processing upload queue: ${state.pendingUploads.length} item(s)`);
+
+        const remainingUploads = [];
+        for (const uploadData of state.pendingUploads) {
+            try {
+                await sendToGoogleSheet(uploadData, true); // true = isRetry
+                console.log("Successfully uploaded queued report for:", uploadData["Arrival Time"]);
+            } catch (error) {
+                console.warn("Failed to upload queued report, will retry later:", error);
+                remainingUploads.push(uploadData); // Put it back in the queue
+            }
+        }
+        
+        state.pendingUploads = remainingUploads;
+        saveState();
+        isSyncing = false;
+        if (state.pendingUploads.length === 0) {
+             console.log("Upload queue cleared.");
+             uploadQueueBanner.classList.add('hidden');
+        } else {
+             console.log(`${state.pendingUploads.length} items remain in queue.`);
+             uploadQueueBanner.classList.add('hidden'); 
+        }
+    }
+    // --- END NEW WSA FUNCTIONS ---
+
+
+    function initEventListeners() {
+        document.body.addEventListener('pointerdown', initAudio, { once: true });
+        settingsBtn.addEventListener('click', () => {
+            Object.keys(state.settings).forEach(key => {
+                const input = document.getElementById(key);
+                if (input) { 
+                    input.value = state.settings[key];
+                    if (key === 'googleSheetUrl' && input.value) {
+                         input.disabled = true;
+                         input.classList.add('bg-gray-800', 'text-gray-500');
+                    } else if (key === 'googleSheetUrl') {
+                        input.disabled = false;
+                        input.classList.remove('bg-gray-800', 'text-gray-500');
+                    }
+                }
+            });
+            navigate('settings');
+        });
+        closeSettingsBtn.addEventListener('click', () => navigate('main'));
+        infoBtn.addEventListener('click', () => showModal('info'));
+        closeInfoModalBtn.addEventListener('click', hideModals);
+        alertModalOkBtn.addEventListener('click', hideModals);
+        checkinOkBtn.addEventListener('click', handleCheckinOK);
+        // --- WSA: Add listeners for report modal ---
+        cancelReportBtn.addEventListener('click', hideModals);
+        submitReportBtn.addEventListener('click', submitReport);
+
+        saveSettingsBtn.addEventListener('click', () => {
+            Object.keys(state.settings).forEach(key => {
+                const input = document.getElementById(key);
+                if (input && !input.disabled) state.settings[key] = input.value;
+            });
+            saveState();
+            showAlert("Success", "Settings have been saved.");
+            navigate('main'); // This will trigger syncs
+        });
+        addLocationBtn.addEventListener('click', () => {
+            showModal('location', () => {
+                document.getElementById('locationModalTitle').textContent = 'Add New Location';
+                document.getElementById('locationName').value = '';
+                document.getElementById('locationAddress').value = '';
+                document.getElementById('companyName').value = '';
+                document.getElementById('useCustomForm').checked = false;
+                document.getElementById('deleteLocationBtn').classList.add('hidden');
+                document.querySelector('#saveLocationBtn').dataset.id = '';
+            });
+        });
+        locationList.addEventListener('click', e => { 
+            const editBtn = e.target.closest('.edit-location-btn'); 
+            if (editBtn) { 
+                e.stopPropagation(); 
+                const locId = editBtn.dataset.id; 
+                const location = state.locations.find(l => l.id === locId); 
+                showModal('location', () => { 
+                    document.getElementById('locationModalTitle').textContent = 'Edit Location'; 
+                    document.getElementById('locationName').value = location.name; 
+                    document.getElementById('locationAddress').value = location.address; 
+                    document.getElementById('companyName').value = location.companyName || '';
+                    document.getElementById('useCustomForm').checked = location.useCustomForm || false;
+                    
+                    if (locId === 'loc_travelling_default') {
+                        document.getElementById('deleteLocationBtn').classList.add('hidden');
+                    } else {
+                        document.getElementById('deleteLocationBtn').classList.remove('hidden'); 
+                    }
+                    
+                    document.querySelector('#saveLocationBtn').dataset.id = locId; 
+                    document.querySelector('#deleteLocationBtn').dataset.id = locId; 
+                }); 
+            } else {
+                const item = e.target.closest('.selectable-item');
+                if (item) {
+                    const locId = item.querySelector('.edit-location-btn').dataset.id;
+                    state.selectedLocationId = locId; 
+                    if('vibrate' in navigator) navigator.vibrate(20);
+                    renderLocations(); 
+                    updateArrivedButtonState();
+                }
+            }
+        });
+        cancelLocationBtn.addEventListener('click', hideModals);
+        saveLocationBtn.addEventListener('click', () => {
+            const id = document.querySelector('#saveLocationBtn').dataset.id;
+            const name = document.getElementById('locationName').value.trim();
+            const address = document.getElementById('locationAddress').value.trim();
+            const companyName = document.getElementById('companyName').value.trim();
+            const useCustomForm = document.getElementById('useCustomForm').checked;
+
+            if (!name || !address) { showAlert("Missing Info", "Please provide both a name and an address for the location."); return; }
+            if (id) {
+                const index = state.locations.findIndex(l => l.id === id);
+                 if (index > -1) state.locations[index] = { ...state.locations[index], name, address, companyName, useCustomForm }; 
+            } else {
+                state.locations.push({ id: `loc_${Date.now()}`, name, address, companyName, useCustomForm }); 
+            }
+            saveState();
+            renderLocations();
+            hideModals();
+
+            if (useCustomForm && companyName) {
+                 // Force a re-sync for this company in case questions changed
+                delete state.cachedForms[companyName]; 
+                fetchForm(companyName);
+            }
+        });
+        deleteLocationBtn.addEventListener('click', (e) => {
+            const id = e.target.dataset.id;
+            if (id === 'loc_travelling_default') { showAlert('Cannot Delete', 'The "Travelling" location cannot be deleted.'); return; }
+            state.locations = state.locations.filter(l => l.id !== id);
+            if (state.selectedLocationId === id) { state.selectedLocationId = null; }
+            saveState();
+            renderLocations();
+            updateArrivedButtonState();
+            hideModals();
+        });
+        useCurrentLocationBtn.addEventListener('click', () => {
+            if (!navigator.geolocation) { showAlert("Not Supported", "Geolocation is not supported by your browser."); return; }
+            useCurrentLocationBtn.textContent = "Getting location...";
+            useCurrentLocationBtn.disabled = true;
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const { latitude, longitude } = position.coords;
+                    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`)
+                        .then(res => res.json())
+                        .then(data => {
+                            document.getElementById('locationAddress').value = data.display_name || `${latitude}, ${longitude}`;
+                        }).catch(() => {
+                            showAlert("Error", "Could not fetch address. Using coordinates instead.");
+                            document.getElementById('locationAddress').value = `${latitude}, ${longitude}`;
+                        }).finally(() => {
+                            useCurrentLocationBtn.textContent = "Use Current Location";
+                            useCurrentLocationBtn.disabled = false;
+                        });
+                },
+                () => {
+                    showAlert("Error", "Unable to retrieve your location.");
+                    useCurrentLocationBtn.textContent = "Use Current Location";
+                    useCurrentLocationBtn.disabled = false;
+                },
+                 { timeout: 10000 } 
+            );
+        });
+        durationSlider.addEventListener('input', (e) => {
+            state.visitDurationMinutes = DURATION_STEPS[parseInt(e.target.value)];
+            durationDisplay.textContent = formatDuration(state.visitDurationMinutes);
+            updateArrivedButtonState();
+        });
+        let tapCount = 0;
+        let tapTimer = null;
+        panicBtn.addEventListener('click', () => {
+            tapCount++;
+            if (tapCount === 1) {
+                tapTimer = setTimeout(() => { tapCount = 0; }, 1500);
+            }
+            if (tapCount === 3) {
+                clearTimeout(tapTimer);
+                tapCount = 0;
+                triggerPanicAlert();
+            }
+        });
+        
+        // --- NEW: clearCacheBtn listener ---
+        clearCacheBtn.addEventListener('click', () => {
+            if (confirm("Are you sure you want to clear all cached report forms? The app will re-download them when you next go online.")) {
+                state.cachedForms = {};
+                saveState();
+                showAlert("Cache Cleared", "All cached forms have been cleared. They will be re-synced from the server.");
+                navigate('main');
+            }
+        });
+
+        const applyLongPress = (element, callback, duration = 1500) => {
+            let timer;
+            let startX, startY;
+            const tolerance = 10; 
+            
+             const styleId = `pseudo-style-${element.id}`;
+             let pseudoElementStyle = document.getElementById(styleId);
+             if (!pseudoElementStyle) {
+                 pseudoElementStyle = document.createElement('style');
+                 pseudoElementStyle.id = styleId;
+                 document.head.appendChild(pseudoElementStyle); 
+             }
+             pseudoElementStyle.textContent = `#${element.id}::after { transition-duration: ${duration / 1000}s; }`;
+
+
+            const start = (e) => {
+                if (element.disabled) return;
+                e.preventDefault(); 
+                if (e.type === 'touchstart' && e.touches.length > 0) {
+                    startX = e.touches[0].clientX;
+                    startY = e.touches[0].clientY;
+                } else if (e.type === 'mousedown') {
+                     startX = e.clientX;
+                     startY = e.clientY;
+                }
+                element.classList.add('pressing');
+                clearTimeout(timer); 
+                timer = setTimeout(() => {
+                    if (element.classList.contains('pressing')) {
+                         callback(); 
+                    }
+                    clearTimeout(timer); 
+                    timer = null;
+                    element.classList.remove('pressing');
+                }, duration);
+            };
+            const cancel = () => {
+                clearTimeout(timer);
+                timer = null;
+                element.classList.remove('pressing');
+            };
+            const move = (e) => {
+                if (!timer) return; 
+                let currentX, currentY;
+                 if (e.type === 'touchmove' && e.touches.length > 0) {
+                    currentX = e.touches[0].clientX;
+                    currentY = e.touches[0].clientY;
+                 } else if (e.type === 'mousemove') {
+                     currentX = e.clientX;
+                     currentY = e.clientY;
+                 } else { return; }
+
+                const deltaX = Math.abs(currentX - startX);
+                const deltaY = Math.abs(currentY - startY);
+                if (deltaX > tolerance || deltaY > tolerance) { cancel(); }
+            };
+            element.removeEventListener('mousedown', start);
+            element.removeEventListener('mouseup', cancel);
+            element.removeEventListener('mouseleave', cancel);
+            element.removeEventListener('touchstart', start);
+            element.removeEventListener('touchend', cancel);
+            element.removeEventListener('touchcancel', cancel);
+            element.removeEventListener('touchmove', move);
+            element.removeEventListener('mousemove', move);
+
+            element.addEventListener('mousedown', start);
+            element.addEventListener('mouseup', cancel);
+            element.addEventListener('mouseleave', cancel);
+            element.addEventListener('touchstart', start, { passive: false });
+            element.addEventListener('touchend', cancel);
+            element.addEventListener('touchcancel', cancel);
+            element.addEventListener('touchmove', move, { passive: false });
+            element.addEventListener('mousemove', move); 
+        };
+
+        // Apply durations
+        applyLongPress(arrivedBtn, handleArriveLongPress, 1500); // 1.5s - No PIN
+        applyLongPress(departBtn, handleDepartLongPress, 1500);   // 1.5s - No PIN
+        applyLongPress(extendBtn, handleExtendLongPress, 1000);   // 1s - Needs PIN
+        applyLongPress(iamSafeBtn, handleSafeLongPress, 1000);     // 1s - Needs PIN
+    }
     
     function init() {
         pages = { main: document.getElementById('mainPage'), locked: document.getElementById('lockedPage'), settings: document.getElementById('settingsPage') };
