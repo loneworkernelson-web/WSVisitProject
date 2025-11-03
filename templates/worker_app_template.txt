@@ -600,8 +600,17 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             if (isDuress) {
                 iamSafe(true); // Call iamSafe with duress flag, no report
             } else {
-                // Not duress. Show the report modal.
-                showReportModal(true); // true = from an alert
+                // --- MODIFIED: Check for "Travelling" before showing report ---
+                if (!state.activeVisit) return; // Safety check
+                const location = state.locations.find(l => l.id === state.activeVisit.locationId);
+                if (location && location.name === 'Travelling') {
+                    console.log("Location is 'Travelling', skipping report on 'I Am Safe'.");
+                    iamSafe(false); // Call iamSafe (non-duress) with no report data
+                } else {
+                    // Not duress, not travelling. Show the report modal.
+                    showReportModal(true); // true = from an alert
+                }
+                // --- END MODIFIED ---
             }
         }, true); 
     }
@@ -976,6 +985,18 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             showAlert("Error", "Could not find location data.");
             return;
         }
+
+        // --- MODIFIED: Skip report for "Travelling" ---
+        if (location.name === 'Travelling') {
+            console.log("Location is 'Travelling', skipping report modal.");
+            if (isFromAlert) {
+                iamSafe(false); // Call iamSafe with no report data
+            } else {
+                depart(); // Call depart with no report data
+            }
+            return;
+        }
+        // --- END MODIFIED ---
 
         // Store if this modal was triggered from an "I AM SAFE" button
         reportModal.dataset.isFromAlert = isFromAlert;
@@ -1514,4 +1535,5 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     </script>
 </body>
 </html>
+
 
