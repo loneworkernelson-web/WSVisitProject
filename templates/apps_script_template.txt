@@ -117,14 +117,16 @@ function doPost(e) {
     var batteryLevelColIdx = headers.indexOf("Battery Level") + 1; 
     var phoneHeaders = ["Worker Phone Number", "Emergency Contact Number", "Escalation Contact Number"];
 
-    // Force phone numbers to text by prepending a single quote
+    // --- MODIFIED: Phone Number Fix ---
     for (var key in data) {
       if (phoneHeaders.indexOf(key) > -1 && data[key]) {
-        if (data[key].charAt(0) !== "'" && data[key].charAt(0) !== "+") {
-          data[key] = "'" + data[key];
+        var phone = String(data[key]);
+        if ((phone.charAt(0) === '0' || phone.charAt(0) === '+') && phone.charAt(0) !== "'") {
+          data[key] = "'" + phone;
         }
       }
     }
+    // --- END MODIFIED ---
 
     // Find existing row or create a new one
     var dataRange = sheet.getDataRange().getValues();
@@ -220,6 +222,7 @@ function doPost(e) {
 
 // --- AUTOMATED TRIGGER FUNCTION ---
 function checkOverdueWorkers() {
+// ... (existing checkOverdueWorkers function, no changes needed) ...
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
 
@@ -291,6 +294,7 @@ function checkOverdueWorkers() {
 
 // --- EMAIL HELPER FUNCTION ---
 function sendAlertEmail(workerData, alertType) {
+// ... (existing sendAlertEmail function, updated for branding) ...
   var recipient = alertType === 'ESCALATION_SENT' ? workerData['Escalation Contact Email'] : workerData['Emergency Contact Email'];
   var subject = '';
   var body = '';
@@ -376,6 +380,7 @@ function sendAlertEmail(workerData, alertType) {
 
 // --- WSA REPORTING FUNCTION (SINGLE COMPANY) ---
 function generateMonthlyReport() {
+// ... (existing generateMonthlyReport function) ...
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const reportSheet = ss.getSheetByName("Reports");
   const visitsSheet = ss.getSheetByName(VISITS_SHEET_NAME);
@@ -534,7 +539,7 @@ function generateMonthlyReport() {
   SpreadsheetApp.getUi().alert("Report Generated!");
 }
 
-// --- === MODIFIED: generateMasterMonthlyReport (v2.5 - Headers & AI) === ---
+// --- === MODIFIED: generateMasterMonthlyReport (v2.6 - (Standard) fix + AI) === ---
 function generateMasterMonthlyReport() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const controlSheet = ss.getSheetByName("Master Report"); // Output sheet
@@ -583,17 +588,9 @@ function generateMasterMonthlyReport() {
       ss.deleteSheet(allSheets[i]);
     }
   }
-
-  // 3. Define Standard Checklist (must match Worker App - only checkbox types)
-  const STANDARD_CHECKLIST = [
-        "Safety check completed",
-        "Client goals reviewed",
-        "Next appointment scheduled",
-        "Visit notes recorded"
-  ];
   
-  // 4. Cache Custom Checklists from sheet
-  const customChecklists = {}; 
+  // --- 4. Cache ALL Checklists from sheet ---
+  const allChecklists = {}; // { "(Standard)": ["Q1", "Q2"], "Smith & Co.": ["Q1", "Q2"] }
   const checklistData = checklistSheet.getDataRange().getValues();
   const checklistHeaders = checklistData.shift();
   checklistData.forEach(function(row) {
@@ -602,7 +599,6 @@ function generateMasterMonthlyReport() {
           const questions = [];
           for (let i = 1; i < checklistHeaders.length; i++) {
               if (row[i]) {
-                  // --- MODIFIED: Check for non-header/non-note types ---
                   const q = String(row[i]);
                   if (!q.startsWith("#") && !q.startsWith("%")) {
                      questions.push(q);
@@ -611,9 +607,17 @@ function generateMasterMonthlyReport() {
                   break; 
               }
           }
-          customChecklists[companyName] = questions;
+          allChecklists[companyName] = questions; // Store all, including (Standard)
       }
   });
+  
+  // --- 4.5 Define Standard Checklist FALLBACK (if (Standard) is missing from sheet) ---
+  const STANDARD_CHECKLIST_FALLBACK = [
+        "Safety check completed",
+        "Client goals reviewed",
+        "Next appointment scheduled",
+        "Visit notes recorded"
+  ];
 
 
   // 5. Get all visit data
@@ -652,10 +656,18 @@ function generateMasterMonthlyReport() {
     if (departureTime && departureTime >= startDate && departureTime < endDate) {
       
       if (!masterReport[companyName]) {
-        let questionList = STANDARD_CHECKLIST;
-        if (customChecklists[companyName] && customChecklists[companyName].length > 0) {
-            questionList = customChecklists[companyName];
+        // --- FIXED: Determine question list ---
+        let questionList = allChecklists[companyName]; // Try custom form first
+        
+        if (!questionList || questionList.length === 0) {
+           // If no custom form, try (Standard) form from sheet
+           questionList = allChecklists["(Standard)"];
         }
+        if (!questionList || questionList.length === 0) {
+          // If (Standard) also fails, use hardcoded fallback
+          questionList = STANDARD_CHECKLIST_FALLBACK;
+        }
+        // --- END FIX ---
         
         const initialTally = {};
         questionList.forEach(q => initialTally[q] = 0);
@@ -691,7 +703,6 @@ function generateMasterMonthlyReport() {
            }
       }
       
-      // --- MODIFIED: Parse new report data structure ---
       let mainNote = "--- No Report Data Submitted ---";
       let durationMins = (durationMs / (1000 * 60));
       
@@ -732,7 +743,6 @@ function generateMasterMonthlyReport() {
             note: mainNote, 
             durationMins: durationMins
       });
-      // --- END MODIFIED ---
     }
   }
 
