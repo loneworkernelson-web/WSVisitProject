@@ -10,20 +10,15 @@ var VISITS_SHEET_NAME = "Visits";
 var CHECKLISTS_SHEET_NAME = "Checklists";
 var REPORT_TAB_PREFIX = "Report - "; 
 
-// --- NEW: PDF REPORTING CONFIGURATION ---
-// 1. Create a Google Doc Template. Get its ID from the URL.
+// --- PDF REPORTING CONFIGURATION ---
 var DEFAULT_REPORT_TEMPLATE_ID = "YOUR_DEFAULT_TEMPLATE_ID_HERE"; 
-// 2. Create a folder in Google Drive to save the PDFs. Get its ID from the URL.
 var PDF_OUTPUT_FOLDER_ID = "YOUR_OUTPUT_FOLDER_ID_HERE";
+
+// --- NEW: LONGITUDINAL REPORTING CONFIGURATION ---
+var LONGITUDINAL_ID_HEADER = "Longitudinal Report Sheet ID";
 
 
 // --- WEB APP ENDPOINTS ---
-
-/**
- * Handles GET requests.
- * 1. Monitor App (JSONP): If 'callback' param exists, validates 'token' and returns all data from [VISITS_SHEET_NAME].
- * 2. Worker App (JSON): If 'action=getForms' param exists, returns custom checklist from [CHECKLISTS_SHEET_NAME] (no key needed).
- */
 function doGet(e) {
   // 1. Monitor App Request (JSONP)
   if (e.parameter.callback) {
@@ -542,234 +537,16 @@ function generateMonthlyReport() {
   SpreadsheetApp.getUi().alert("Report Generated!");
 }
 
-// --- === MODIFIED: generateMasterMonthlyReport (v2.9 - Columnar Notes) === ---
 
+// --- === INTERNAL HELPER FUNCTION FOR REPORTING === ---
 /**
- * Helper function to run AI correction on an array of notes.
+ * Gathers all data and aggregates it by company and site.
+ * This is the core logic used by both report generators.
  */
-function runAICorrection(notesArray, companyName) {
-  let aiCorrectionFailed = false;
-  // This function now receives the full note entry objects
-  // We will modify the .mainNote and .customNotes properties directly
-  
-  if (GEMINI_API_KEY && GEMINI_API_KEY !== "YOUR_GEMINI_API_KEY_HERE" && notesArray.length > 0) {
-    Logger.log("Starting AI note correction for " + companyName);
-    try {
-      // --- MODIFIED: Create an array of only the note strings ---
-      const rawNotes = [];
-      notesArray.forEach(entry => {
-        rawNotes.push(entry.mainNote); // Add the main note
-        if (entry.customNotes) {
-          Object.keys(entry.customNotes).forEach(key => {
-            rawNotes.push(entry.customNotes[key]); // Add each custom note
-          });
-        }
-      });
-
-      // Filter out empty strings
-      const nonEmptyNotes = rawNotes.filter(n => n && n.trim() !== "");
-      if (nonEmptyNotes.length === 0) {
-        Logger.log("No notes to correct for " + companyName);
-        return { correctedNotesData: notesArray, aiCorrectionFailed: false };
-      }
-
-      const systemPrompt = "You are a helpful proofreading assistant. You will be given a JSON array of visit notes. Correct any spelling and grammar mistakes in each note to professional New Zealand English. Do not add new information or change the meaning. Respond with a JSON array of the same length, containing the corrected notes. If a note is empty or fine, return it as-is.";
-      
-      const schema = {
-        "type": "ARRAY",
-        "items": { "type": "STRING" }
-      };
-      
-      const payload = {
-        contents: [{ parts: [{ text: JSON.stringify(nonEmptyNotes) }] }],
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: schema
-        }
-      };
-      
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`;
-      
-      const options = {
-        method: 'POST',
-        contentType: 'application/json',
-        payload: JSON.stringify(payload),
-        muteHttpExceptions: true 
-      };
-      
-      const response = UrlFetchApp.fetch(apiUrl, options);
-      const responseCode = response.getResponseCode();
-      
-      if (responseCode === 200) {
-        const result = JSON.parse(response.getContentText());
-        const correctedNotes = JSON.parse(result.candidates[0].content.parts[0].text);
-        
-        // --- MODIFIED: Re-integrate corrected notes ---
-        if (correctedNotes.length === nonEmptyNotes.length) {
-          let correctedIndex = 0;
-          // Loop through the original notesArray and replace non-empty notes
-          notesArray.forEach(entry => {
-            if (entry.mainNote && entry.mainNote.trim() !== "") {
-              entry.mainNote = correctedNotes[correctedIndex++];
-            }
-            if (entry.customNotes) {
-              Object.keys(entry.customNotes).forEach(key => {
-                if (entry.customNotes[key] && entry.customNotes[key].trim() !== "") {
-                  entry.customNotes[key] = correctedNotes[correctedIndex++];
-                }
-              });
-            }
-          });
-          Logger.log("Successfully corrected notes for " + companyName);
-        } else {
-          Logger.log("AI returned different number of notes. Skipping correction for " + companyName);
-          aiCorrectionFailed = true; 
-        }
-        // --- END MODIFIED ---
-      } else {
-          Logger.log("AI API Error for " + companyName + ": " + response.getContentText());
-          aiCorrectionFailed = true; 
-      }
-    } catch(err) {
-      Logger.log("Error during AI note correction for " + companyName + ": " + err.toString());
-      aiCorrectionFailed = true; 
-    }
-  }
-  return { correctedNotesData: notesArray, aiCorrectionFailed: aiCorrectionFailed };
-}
-
-/**
- * Helper function to write aggregated data to a report sheet.
- */
-function writeReportToTab(reportSheet, coData, reportTitle, monthStr, aiCorrectionFailed, allCustomNoteHeaders) {
-  let outputRow = 1; 
-
-  // --- === FIX: Use reportSheet instead of newSheet === ---
-  reportSheet.getRange(outputRow, 1).setValue(reportTitle).setFontWeight("bold").setBackground("#4a5568").setFontColor("#ffffff");
-  reportSheet.getRange(outputRow, 1, 1, 4 + allCustomNoteHeaders.length).merge(); // Merge across all columns
-  outputRow++;
-  
-  // Write Stats
-  reportSheet.getRange(outputRow, 1).setValue("Report Month:").setFontWeight("bold");
-  reportSheet.getRange(outputRow, 2).setValue(monthStr);
-  outputRow++;
-  reportSheet.getRange(outputRow, 1).setValue("Total Visits:").setFontWeight("bold");
-  reportSheet.getRange(outputRow, 2).setValue(coData.totalVisits);
-  outputRow++;
-  
-  reportSheet.getRange(outputRow, 1).setValue("Total Hours On-Site (Calculated):").setFontWeight("bold");
-  const totalHours = coData.totalDurationMs / (1000 * 60 * 60); 
-  reportSheet.getRange(outputRow, 2).setValue(totalHours.toFixed(2));
-  outputRow += 2; 
-
-  // Write Checklist Totals
-  reportSheet.getRange(outputRow, 1).setValue("Checklist Totals").setFontWeight("bold");
-  reportSheet.getRange(outputRow, 2).setValue("Times Ticked").setFontWeight("bold");
-  outputRow++;
-  
-  if (coData.questionList.length > 0) {
-      for (const question of coData.questionList) {
-          reportSheet.getRange(outputRow, 1).setValue(question);
-          reportSheet.getRange(outputRow, 2).setValue(coData.questionTally[question]);
-          outputRow++;
-      }
-  } else {
-       reportSheet.getRange(outputRow, 1).setValue("No checklist data recorded.").setFontStyle("italic");
-       outputRow++;
-  }
-  
-  outputRow++; 
-  
-  if (aiCorrectionFailed) {
-    reportSheet.getRange(outputRow, 1, 1, 4 + allCustomNoteHeaders.length).setValue("Note: AI spelling/grammar check failed. The notes below are uncorrected.")
-      .setFontColor("#ff0000") // Red
-      .setFontWeight("bold")
-      .setFontStyle("italic")
-      .setHorizontalAlignment("center")
-      .merge();
-    outputRow++;
-  }
-
-  // --- MODIFIED: Write All Notes (in dynamic columns) ---
-  let col = 1;
-  reportSheet.getRange(outputRow, col++).setValue("Date").setFontWeight("bold");
-  reportSheet.getRange(outputRow, col++).setValue("Worker").setFontWeight("bold");
-  reportSheet.getRange(outputRow, col++).setValue("Duration (Mins)").setFontWeight("bold");
-  reportSheet.getRange(outputRow, col++).setValue("Note (Standard)").setFontWeight("bold");
-  // Add custom note headers
-  allCustomNoteHeaders.forEach(header => {
-      reportSheet.getRange(outputRow, col++).setValue(header).setFontWeight("bold");
-  });
-  outputRow++;
-  
-  let monthTotalMinutes = 0; 
-  
-  if (coData.notes.length > 0) {
-      coData.notes.sort((a,b) => a.date.getTime() - b.date.getTime()); // Sort notes by date
-      
-      coData.notes.forEach(noteEntry => {
-          let noteCol = 1;
-          reportSheet.getRange(outputRow, noteCol++).setValue(noteEntry.date).setNumberFormat("yyyy-mm-dd"); 
-          reportSheet.getRange(outputRow, noteCol++).setValue(noteEntry.worker);
-          reportSheet.getRange(outputRow, noteCol++).setValue(noteEntry.durationMins.toFixed(0));
-          reportSheet.getRange(outputRow, noteCol++).setValue(noteEntry.mainNote).setWrap(true);
-
-          // Add custom notes in the correct columns
-          allCustomNoteHeaders.forEach(header => {
-              reportSheet.getRange(outputRow, noteCol++).setValue(noteEntry.customNotes[header] || "").setWrap(true);
-          });
-
-          monthTotalMinutes += noteEntry.durationMins;
-          outputRow++;
-      });
-  } else {
-       reportSheet.getRange(outputRow, 1, 1, 4 + allCustomNoteHeaders.length).setValue("No notes recorded for this period.").setFontStyle("italic").merge();
-       outputRow++;
-  }
-  
-  // Add Total row for this company
-  reportSheet.getRange(outputRow, 2).setValue("Total Hours (from visits):").setFontWeight("bold");
-  reportSheet.getRange(outputRow, 3).setValue(monthTotalMinutes / 60).setNumberFormat("0.00").setFontWeight("bold");
-  
-  // Auto-resize columns on the new sheet
-  reportSheet.autoResizeColumn(1);
-  reportSheet.autoResizeColumn(2);
-  reportSheet.autoResizeColumn(4);
-  reportSheet.setColumnWidth(3, 300); // Set fixed width for main note
-  
-  // Resize custom note columns
-  for (let i = 0; i < allCustomNoteHeaders.length; i++) {
-    reportSheet.setColumnWidth(5 + i, 250);
-  }
-  // --- === END FIX === ---
-}
-
-/**
- * Generates a master report for ALL companies for a specified month.
- * Creates a new, separate tab for each COMPANY-SITE combination.
- * Assumes a sheet named "Master Report" exists.
- * Input for month (e.g., 2025-10) is taken from cell B1 of "Master Report" sheet.
- */
-function generateMasterMonthlyReport() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const controlSheet = ss.getSheetByName("Master Report"); // Output sheet
-  const visitsSheet = ss.getSheetByName(VISITS_SHEET_NAME); // Data source
+function _aggregateDataForMonth(monthStr, ss) {
+  const visitsSheet = ss.getSheetByName(VISITS_SHEET_NAME);
   const checklistSheet = ss.getSheetByName(CHECKLISTS_SHEET_NAME);
   
-  if (!controlSheet || !visitsSheet || !checklistSheet) {
-    SpreadsheetApp.getUi().alert("Error: 'Master Report', 'Visits', or 'Checklists' sheet not found.");
-    return;
-  }
-
-  // 1. Get the report criteria from the 'Master Report' sheet
-  let monthStr = controlSheet.getRange("B1").getValue(); 
-  
-  if (!monthStr) {
-    SpreadsheetApp.getUi().alert("Please enter a Month (YYYY-MM) in cell B1.");
-    return;
-  }
-
   // --- Sanitize the month string ---
   if (monthStr instanceof Date) {
       var tz = ss.getSpreadsheetTimeZone();
@@ -778,8 +555,7 @@ function generateMasterMonthlyReport() {
       monthStr = String(monthStr).substring(0, 7); 
   }
   if (!/^\d{4}-\d{2}$/.test(monthStr)) {
-      SpreadsheetApp.getUi().alert("Please enter the month in YYYY-MM format (e.g., 2025-10).");
-      return;
+      throw new Error("Please enter the month in YYYY-MM format (e.g., 2025-10).");
   }
   
   const parts = monthStr.split('-');
@@ -789,26 +565,21 @@ function generateMasterMonthlyReport() {
   const startDate = new Date(Date.UTC(year, month, 1)); 
   const endDate = new Date(Date.UTC(year, month + 1, 1)); 
   
-  controlSheet.getRange("B1").setValue(monthStr); 
-  
-  // 2. Clear old report tabs
-  const allSheets = ss.getSheets();
-  for (let i = 0; i < allSheets.length; i++) {
-    const sheetName = allSheets[i].getName();
-    if (sheetName.startsWith(REPORT_TAB_PREFIX)) {
-      ss.deleteSheet(allSheets[i]);
-    }
-  }
-  
-  // 3. Cache ALL Checklists from sheet
+  // 2. Cache ALL Checklists from sheet
   const allChecklists = {}; 
   const checklistData = checklistSheet.getDataRange().getValues();
   const checklistHeaders = checklistData.shift();
+  // --- NEW: Also cache Longitudinal IDs ---
+  const longitudinalIdMap = {};
+  const templateIdCol = checklistHeaders.indexOf("Report Template ID"); 
+  const longitudinalIdCol = checklistHeaders.indexOf(LONGITUDINAL_ID_HEADER);
+
   checklistData.forEach(function(row) {
       const companyName = row[0];
       if (companyName) {
           const questions = [];
           for (let i = 1; i < checklistHeaders.length; i++) {
+              if (i === templateIdCol || i === longitudinalIdCol) continue; // Skip ID columns
               if (row[i]) {
                   const q = String(row[i]);
                   if (!q.startsWith("#") && !q.startsWith("%")) {
@@ -819,39 +590,43 @@ function generateMasterMonthlyReport() {
               }
           }
           allChecklists[companyName] = questions; // Store all, including (Standard)
+          
+          if (templateIdCol !== -1 && row[templateIdCol]) {
+              templateIdMap[companyName] = row[templateIdCol];
+          }
+          if (longitudinalIdCol !== -1 && row[longitudinalIdCol]) {
+              longitudinalIdMap[companyName] = row[longitudinalIdCol];
+          }
       }
   });
   
-  // 4. Define Standard Checklist FALLBACK (if (Standard) is missing from sheet)
+  // 3. Define Standard Checklist FALLBACK (if (Standard) is missing from sheet)
   const STANDARD_CHECKLIST_FALLBACK = [
         "Safety check completed",
         "Client goals reviewed",
         "Next appointment scheduled",
         "Visit notes recorded"
   ];
-
-
-  // 5. Get all visit data
+  
+  // 4. Get all visit data
   const dataRange = visitsSheet.getDataRange();
   const allData = dataRange.getValues();
-  const visitsHeaders = allData.shift(); // --- FIX: Use visitsHeaders
+  const visitsHeaders = allData.shift(); 
 
-  // Find the column indexes we need
   const companyCol = visitsHeaders.indexOf("Company Name");
   const locationCol = visitsHeaders.indexOf("Location Name"); 
   const arrivalCol = visitsHeaders.indexOf("Arrival Time"); 
-  const departureCol = visitsHeaders.indexOf("Actual Departure Time"); // --- FIX: Use visitsHeaders
+  const departureCol = visitsHeaders.indexOf("Actual Departure Time");
   const reportCol = visitsHeaders.indexOf("Visit Report Data");
   const workerCol = visitsHeaders.indexOf("Worker Name");
 
   if (companyCol === -1 || locationCol === -1 || arrivalCol === -1 || departureCol === -1 || reportCol === -1 || workerCol === -1) {
-      SpreadsheetApp.getUi().alert("Error: Could not find required columns ('Company Name', 'Location Name', 'Arrival Time', 'Actual Departure Time', 'Visit Report Data', 'Worker Name') in 'Visits' sheet.");
-      return;
+      throw new Error("Error: Could not find required columns ('Company Name', 'Location Name', 'Arrival Time', 'Actual Departure Time', 'Visit Report Data', 'Worker Name') in 'Visits' sheet.");
   }
 
-  // 6. Process the data
+  // 5. Process the data
   const masterReport = {}; 
-  const combinedReport = {}; // --- NEW: For combined reports
+  const combinedReport = {}; 
 
   for (let i = 0; i < allData.length; i++) {
     const row = allData[i];
@@ -891,7 +666,7 @@ function generateMasterMonthlyReport() {
           totalDurationMs: 0,
           questionList: questionList, 
           questionTally: initialTally, 
-          allCustomNoteHeaders: new Set(), // --- NEW: Track custom headers
+          allCustomNoteHeaders: new Set(), 
           notes: []
         };
       }
@@ -907,296 +682,6 @@ function generateMasterMonthlyReport() {
           totalDurationMs: 0,
           questionList: questionList, 
           questionTally: initialTally, 
-          allCustomNoteHeaders: new Set(), // --- NEW: Track custom headers
-          notes: []
-        };
-      }
-      
-      const coData = masterReport[reportKey]; 
-      const combData = combinedReport[companyName];
-      
-      coData.totalVisits++;
-      combData.totalVisits++; 
-      
-      var arrivalTime = null;
-      var durationMs = 0; 
-      try {
-           if(row[arrivalCol]) {
-                arrivalTime = new Date(row[arrivalCol]);
-                if (isNaN(arrivalTime.getTime())) arrivalTime = null;
-           }
-      } catch(e) {}
-
-      if (arrivalTime) {
-           durationMs = departureTime.getTime() - arrivalTime.getTime();
-           if (durationMs > 0) {
-                coData.totalDurationMs += durationMs;
-                combData.totalDurationMs += durationMs; 
-           } else {
-               durationMs = 0;
-           }
-      }
-      
-      // --- MODIFIED: Store notes separately ---
-      let mainNote = "";
-      let customNotes = {};
-      let durationMins = (durationMs / (1000 * 60));
-      
-      const reportJson = row[reportCol];
-      if (reportJson) {
-        try {
-          const report = JSON.parse(reportJson);
-          
-          if (report.checklist) {
-            for (const question in report.checklist) {
-              if (coData.questionTally.hasOwnProperty(question) && report.checklist[question] === true) { 
-                coData.questionTally[question]++; 
-                combData.questionTally[question]++; 
-              }
-            }
-          }
-          
-          mainNote = report.notes || "";
-          
-          if (report.custom_notes) {
-            customNotes = report.custom_notes;
-            for (const header in customNotes) {
-                coData.allCustomNoteHeaders.add(header); // Add to site report
-                combData.allCustomNoteHeaders.add(header); // Add to combined report
-            }
-          }
-
-        } catch (e) {
-          Logger.log(`Could not parse report data in row ${i + 2}: ${reportJson}`);
-          mainNote = "--- Error Parsing Report Data ---";
-        }
-      } else {
-         mainNote = "--- No Report Data Submitted ---";
-      }
-      
-      const noteEntry = {
-            date: departureTime, 
-            worker: row[workerCol], 
-            mainNote: mainNote, 
-            customNotes: customNotes,
-            durationMins: durationMins
-      };
-      coData.notes.push(noteEntry);
-      combData.notes.push(noteEntry); 
-      // --- END MODIFIED ---
-    }
-  }
-
-  // 7. Write the consolidated report to SEPARATE TABS
-  SpreadsheetApp.flush(); 
-  
-  // --- Loop 1: Write Site-Specific Reports ---
-  const allReportKeys = Object.keys(masterReport).sort(); 
-  for (const reportKey of allReportKeys) {
-    const coData = masterReport[reportKey];
-    
-    const newSheetName = REPORT_TAB_PREFIX + reportKey.replace(/[\/\\?*\[\]]/g, '-').substring(0, 80); 
-    let newSheet = ss.insertSheet(newSheetName);
-    
-    // Run AI Correction on this data batch
-    const aiResult = runAICorrection(coData.notes, reportKey);
-    coData.notes = aiResult.correctedNotesData; // Use the corrected (or original) notes
-    
-    // Get the sorted list of custom note headers for this company
-    const sortedCustomHeaders = Array.from(coData.allCustomNoteHeaders).sort();
-    
-    // Write the formatted data to the new tab
-    writeReportToTab(newSheet, coData, reportKey, monthStr, aiResult.aiCorrectionFailed, sortedCustomHeaders);
-  }
-  
-  // --- Loop 2: Write Combined Company Reports ---
-  const allCombinedCompanyNames = Object.keys(combinedReport).sort();
-  for (const companyName of allCombinedCompanyNames) {
-    const coData = combinedReport[companyName];
-    
-    // Only create a combined report if there were multiple sites
-    const sitesForThisCompany = allReportKeys.filter(key => key.startsWith(companyName + " - ")).length;
-    if (sitesForThisCompany > 1) { 
-      const newSheetName = REPORT_TAB_PREFIX + companyName.replace(/[\/\\?*\[\]]/g, '-') + " (Combined)";
-      let newSheet = ss.insertSheet(newSheetName);
-
-      // Run AI Correction on this combined data batch
-      const aiResult = runAICorrection(coData.notes, companyName + " (Combined)");
-      coData.notes = aiResult.correctedNotesData;
-      
-      // Get the sorted list of ALL custom note headers for this company
-      const sortedCustomHeaders = Array.from(coData.allCustomNoteHeaders).sort();
-      
-      // Write the formatted data to the new tab
-      writeReportToTab(newSheet, coData, companyName + " (Combined)", monthStr, aiResult.aiCorrectionFailed, sortedCustomHeaders);
-    }
-  }
-  
-  SpreadsheetApp.getUi().alert("Master Report Generated! New tabs have been created for each company site and combined totals.");
-}
-
-
-// --- === NEW: PDF/DOCS REPORTING FUNCTIONS === ---
-
-/**
- * Creates a Google Doc for each company report and saves them as PDFs in a
- * specified Google Drive folder.
- * This is the function you should assign to a button.
- */
-function generateAllPdfReports() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const controlSheet = ss.getSheetByName("Master Report");
-  const visitsSheet = ss.getSheetByName(VISITS_SHEET_NAME);
-  const checklistSheet = ss.getSheetByName(CHECKLISTS_SHEET_NAME);
-  
-  if (PDF_OUTPUT_FOLDER_ID === "YOUR_OUTPUT_FOLDER_ID_HERE" || DEFAULT_REPORT_TEMPLATE_ID === "YOUR_DEFAULT_TEMPLATE_ID_HERE") {
-    SpreadsheetApp.getUi().alert("Error: PDF_OUTPUT_FOLDER_ID or DEFAULT_REPORT_TEMPLATE_ID not set at the top of the script.");
-    return;
-  }
-  
-  const outputFolder = DriveApp.getFolderById(PDF_OUTPUT_FOLDER_ID);
-  
-  if (!controlSheet || !visitsSheet || !checklistSheet) {
-    SpreadsheetApp.getUi().alert("Error: 'Master Report', 'Visits', or 'Checklists' sheet not found.");
-    return;
-  }
-
-  // 1. Get the report criteria from the 'Master Report' sheet
-  let monthStr = controlSheet.getRange("B1").getValue(); 
-  if (!monthStr) {
-    SpreadsheetApp.getUi().alert("Please enter a Month (YYYY-MM) in cell B1.");
-    return;
-  }
-
-  // --- Sanitize the month string ---
-  if (monthStr instanceof Date) {
-      var tz = ss.getSpreadsheetTimeZone();
-      monthStr = Utilities.formatDate(monthStr, tz, "yyyy-MM");
-  } else {
-      monthStr = String(monthStr).substring(0, 7); 
-  }
-  if (!/^\d{4}-\d{2}$/.test(monthStr)) {
-      SpreadsheetApp.getUi().alert("Please enter the month in YYYY-MM format (e.g., 2025-10).");
-      return;
-  }
-  
-  const parts = monthStr.split('-');
-  const year = parseInt(parts[0], 10);
-  const month = parseInt(parts[1], 10) - 1; 
-
-  const startDate = new Date(Date.UTC(year, month, 1)); 
-  const endDate = new Date(Date.UTC(year, month + 1, 1)); 
-  
-  controlSheet.getRange("B1").setValue(monthStr); 
-  
-  // 2. Cache ALL Checklists & Template IDs from sheet
-  const allChecklists = {}; 
-  const templateIdMap = {}; // --- NEW: To store Template IDs
-  
-  const checklistData = checklistSheet.getDataRange().getValues();
-  const checklistHeaders = checklistData.shift();
-  const templateIdCol = checklistHeaders.indexOf("Report Template ID"); // Find the template column
-  
-  checklistData.forEach(function(row) {
-      const companyName = row[0];
-      if (companyName) {
-          const questions = [];
-          for (let i = 1; i < checklistHeaders.length; i++) {
-              if (i === templateIdCol) continue; // Skip the template ID column
-              if (row[i]) {
-                  const q = String(row[i]);
-                  if (!q.startsWith("#") && !q.startsWith("%")) {
-                     questions.push(q);
-                  }
-              } else {
-                  break; 
-              }
-          }
-          allChecklists[companyName] = questions; // Store all, including (Standard)
-          
-          // Store the template ID for this company
-          if (templateIdCol !== -1 && row[templateIdCol]) {
-              templateIdMap[companyName] = row[templateIdCol];
-          }
-      }
-  });
-  
-  // 3. Define Standard Checklist FALLBACK
-  const STANDARD_CHECKLIST_FALLBACK = [
-        "Safety check completed",
-        "Client goals reviewed",
-        "Next appointment scheduled",
-        "Visit notes recorded"
-  ];
-
-  // 4. Get all visit data
-  const dataRange = visitsSheet.getDataRange();
-  const allData = dataRange.getValues();
-  const visitsHeaders = allData.shift(); // --- FIX: Use visitsHeaders
-  
-  // ... (Find column indexes in Visits sheet) ...
-  const companyCol = visitsHeaders.indexOf("Company Name");
-  const locationCol = visitsHeaders.indexOf("Location Name"); 
-  const arrivalCol = visitsHeaders.indexOf("Arrival Time"); 
-  const departureCol = visitsHeaders.indexOf("Actual Departure Time"); // --- FIX: Use visitsHeaders
-  const reportCol = visitsHeaders.indexOf("Visit Report Data");
-  const workerCol = visitsHeaders.indexOf("Worker Name");
-  
-  // 5. Process the data
-  const masterReport = {}; 
-  const combinedReport = {}; 
-
-  for (let i = 0; i < allData.length; i++) {
-    const row = allData[i];
-    const companyName = row[companyCol];
-    const locationName = row[locationCol]; 
-    if (!companyName || !locationName) continue; 
-
-    const reportKey = companyName + " - " + locationName;
-    var departureTime = null;
-    try {
-      if(row[departureCol]){
-         departureTime = new Date(row[departureCol]); 
-         if (isNaN(departureTime.getTime())) departureTime = null;
-      }
-    } catch(e) {} 
-
-    if (departureTime && departureTime >= startDate && departureTime < endDate) {
-      let questionList = allChecklists[companyName];
-      if (!questionList || questionList.length === 0) {
-         questionList = allChecklists["(Standard)"];
-      }
-      if (!questionList || questionList.length === 0) {
-        questionList = STANDARD_CHECKLIST_FALLBACK;
-      }
-      
-      // Initialize Site-Level
-      if (!masterReport[reportKey]) {
-        const initialTally = {};
-        questionList.forEach(q => initialTally[q] = 0);
-        masterReport[reportKey] = {
-          companyName: companyName, 
-          locationName: locationName, 
-          totalVisits: 0,
-          totalDurationMs: 0,
-          questionList: questionList, 
-          questionTally: initialTally, 
-          allCustomNoteHeaders: new Set(), 
-          notes: []
-        };
-      }
-      
-      // Initialize Combined-Level
-      if (!combinedReport[companyName]) {
-        const initialTally = {};
-        questionList.forEach(q => initialTally[q] = 0);
-        combinedReport[companyName] = {
-          companyName: companyName,
-          locationName: "All Sites", 
-          totalVisits: 0,
-          totalDurationMs: 0,
-          questionList: questionList, 
-          questionTally: initialTally, 
           allCustomNoteHeaders: new Set(), 
           notes: []
         };
@@ -1235,6 +720,7 @@ function generateAllPdfReports() {
       if (reportJson) {
         try {
           const report = JSON.parse(reportJson);
+          
           if (report.checklist) {
             for (const question in report.checklist) {
               if (coData.questionTally.hasOwnProperty(question) && report.checklist[question] === true) { 
@@ -1243,7 +729,9 @@ function generateAllPdfReports() {
               }
             }
           }
+          
           mainNote = report.notes || "";
+          
           if (report.custom_notes) {
             customNotes = report.custom_notes;
             for (const header in customNotes) {
@@ -1251,6 +739,7 @@ function generateAllPdfReports() {
                 combData.allCustomNoteHeaders.add(header); 
             }
           }
+
         } catch (e) {
           Logger.log(`Could not parse report data in row ${i + 2}: ${reportJson}`);
           mainNote = "--- Error Parsing Report Data ---";
@@ -1270,74 +759,358 @@ function generateAllPdfReports() {
       combData.notes.push(noteEntry); 
     }
   }
-
-  // 7. Write the consolidated report to NEW GOOGLE DOCS/PDFS
-  SpreadsheetApp.flush(); 
   
-  const allCombinedCompanyNames = Object.keys(combinedReport).sort();
-  
-  for (const companyName of allCombinedCompanyNames) {
-    const coData = combinedReport[companyName]; // Get the combined data
-    
-    // Find the correct template ID
-    let templateId = templateIdMap[companyName];
-    if (!templateId) {
-        templateId = templateIdMap["(Standard)"];
-    }
-    if (!templateId) {
-        templateId = DEFAULT_REPORT_TEMPLATE_ID; // Final fallback
-    }
-    
-    // Run AI Correction
-    const aiResult = runAICorrection(coData.notes, companyName + " (Combined)");
-    coData.notes = aiResult.correctedNotesData;
-    
-    // Create the new document
-    const newDocFile = DriveApp.getFileById(templateId).makeCopy(outputFolder);
-    const newDoc = DocumentApp.openById(newDocFile.getId());
-    const body = newDoc.getBody();
-    
-    // Replace simple tags
-    const totalHours = (coData.totalDurationMs / (1000 * 60 * 60)).toFixed(2);
-    body.replaceText("{{CompanyName}}", coData.companyName);
-    body.replaceText("{{ReportMonth}}", monthStr);
-    body.replaceText("{{TotalVisits}}", coData.totalVisits);
-    body.replaceText("{{TotalHours}}", totalHours);
+  return { 
+    masterReport: masterReport, 
+    combinedReport: combinedReport, 
+    templateIdMap: templateIdMap, 
+    longitudinalIdMap: longitudinalIdMap,
+    allChecklists: allChecklists,
+    STANDARD_CHECKLIST_FALLBACK: STANDARD_CHECKLIST_FALLBACK
+  };
+}
 
-    // Build and insert tables
-    buildTableInDoc(body, "{{ChecklistTable}}", [["Checklist Item", "Times Ticked"]], coData.questionList.map(q => [q, coData.questionTally[q] || 0]));
-    
-    const sortedCustomHeaders = Array.from(coData.allCustomNoteHeaders).sort();
-    const noteTableHeaders = ["Date", "Worker", "Duration (Mins)", "Note (Standard)"].concat(sortedCustomHeaders);
-    
-    const noteTableData = coData.notes.sort((a,b) => a.date.getTime() - b.date.getTime()).map(noteEntry => {
-        const row = [
-            noteEntry.date.toLocaleDateString(), 
-            noteEntry.worker, 
-            noteEntry.durationMins.toFixed(0),
-            noteEntry.mainNote
-        ];
-        sortedCustomHeaders.forEach(header => {
-            row.push(noteEntry.customNotes[header] || "");
-        });
-        return row;
-    });
-    
-    buildTableInDoc(body, "{{NotesTable}}", [noteTableHeaders], noteTableData);
-    
-    // Save and close
-    newDoc.saveAndClose();
-    
-    // Create PDF
-    const pdfBlob = newDoc.getAs(MimeType.PDF);
-    const pdfFile = outputFolder.createFile(pdfBlob);
-    pdfFile.setName(`Report - ${coData.companyName} - ${monthStr}.pdf`);
-    
-    // Optional: Delete the temporary Google Doc
-    DriveApp.getFileById(newDoc.getId()).setTrashed(true);
+// --- === MASTER REPORT (TABS) v2.7 === ---
+function generateMasterMonthlyReport() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const controlSheet = ss.getSheetByName("Master Report");
+  
+  if (!controlSheet) {
+    SpreadsheetApp.getUi().alert("Error: 'Master Report' sheet not found.");
+    return;
   }
   
-  SpreadsheetApp.getUi().alert("PDF Reports Generated! Check your Google Drive folder: " + outputFolder.getName());
+  let monthStr = controlSheet.getRange("B1").getValue(); 
+  if (!monthStr) {
+    SpreadsheetApp.getUi().alert("Please enter a Month (YYYY-MM) in cell B1.");
+    return;
+  }
+  
+  try {
+    // 1. Aggregate all data
+    const aggregatedData = _aggregateDataForMonth(monthStr, ss);
+    if (!aggregatedData) return; // Error was already handled
+    
+    const { masterReport, combinedReport, allChecklists, STANDARD_CHECKLIST_FALLBACK } = aggregatedData;
+    monthStr = (monthStr instanceof Date) ? monthStr.toISOString().substring(0, 7) : String(monthStr).substring(0, 7);
+
+    // 2. Clear old report tabs
+    const allSheets = ss.getSheets();
+    for (let i = 0; i < allSheets.length; i++) {
+      const sheetName = allSheets[i].getName();
+      if (sheetName.startsWith(REPORT_TAB_PREFIX)) {
+        ss.deleteSheet(allSheets[i]);
+      }
+    }
+    SpreadsheetApp.flush(); 
+
+    // 3. Write Site-Specific Reports
+    const allReportKeys = Object.keys(masterReport).sort(); 
+    for (const reportKey of allReportKeys) {
+      const coData = masterReport[reportKey];
+      const newSheetName = REPORT_TAB_PREFIX + reportKey.replace(/[\/\\?*\[\]]/g, '-').substring(0, 80); 
+      let newSheet = ss.insertSheet(newSheetName);
+      
+      const aiResult = runAICorrection(coData.notes, reportKey);
+      coData.notes = aiResult.correctedNotesData;
+      const sortedCustomHeaders = Array.from(coData.allCustomNoteHeaders).sort();
+      
+      writeReportToTab(newSheet, coData, reportKey, monthStr, aiResult.aiCorrectionFailed, sortedCustomHeaders);
+    }
+    
+    // 4. Write Combined Company Reports
+    const allCombinedCompanyNames = Object.keys(combinedReport).sort();
+    for (const companyName of allCombinedCompanyNames) {
+      const coData = combinedReport[companyName];
+      const sitesForThisCompany = allReportKeys.filter(key => key.startsWith(companyName + " - ")).length;
+      
+      if (sitesForThisCompany > 1) { 
+        const newSheetName = REPORT_TAB_PREFIX + companyName.replace(/[\/\\?*\[\]]/g, '-') + " (Combined)";
+        let newSheet = ss.insertSheet(newSheetName);
+        
+        const aiResult = runAICorrection(coData.notes, companyName + " (Combined)");
+        coData.notes = aiResult.correctedNotesData;
+        const sortedCustomHeaders = Array.from(coData.allCustomNoteHeaders).sort();
+        
+        writeReportToTab(newSheet, coData, companyName + " (Combined)", monthStr, aiResult.aiCorrectionFailed, sortedCustomHeaders);
+      }
+    }
+    
+    SpreadsheetApp.getUi().alert("Master Report Generated! New tabs have been created for each company site and combined totals.");
+
+  } catch (e) {
+    Logger.log(e);
+    SpreadsheetApp.getUi().alert("An error occurred: " + e.message);
+  }
+}
+
+// --- === PDF/DOCS REPORTING (v2.7) === ---
+function generateAllPdfReports() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const controlSheet = ss.getSheetByName("Master Report");
+  
+  if (PDF_OUTPUT_FOLDER_ID === "YOUR_OUTPUT_FOLDER_ID_HERE" || DEFAULT_REPORT_TEMPLATE_ID === "YOUR_DEFAULT_TEMPLATE_ID_HERE") {
+    SpreadsheetApp.getUi().alert("Error: PDF_OUTPUT_FOLDER_ID or DEFAULT_REPORT_TEMPLATE_ID not set at the top of the script.");
+    return;
+  }
+  
+  let outputFolder;
+  try {
+    outputFolder = DriveApp.getFolderById(PDF_OUTPUT_FOLDER_ID);
+  } catch(e) {
+    SpreadsheetApp.getUi().alert("Error: Could not find PDF Output Folder. Check ID in script (line 16).");
+    return;
+  }
+  
+  if (!controlSheet) {
+    SpreadsheetApp.getUi().alert("Error: 'Master Report' sheet not found.");
+    return;
+  }
+  
+  let monthStr = controlSheet.getRange("B1").getValue(); 
+  if (!monthStr) {
+    SpreadsheetApp.getUi().alert("Please enter a Month (YYYY-MM) in cell B1.");
+    return;
+  }
+  
+  try {
+    // 1. Aggregate all data
+    const aggregatedData = _aggregateDataForMonth(monthStr, ss);
+    if (!aggregatedData) return; // Error was handled
+    
+    const { combinedReport, templateIdMap } = aggregatedData;
+    monthStr = (monthStr instanceof Date) ? monthStr.toISOString().substring(0, 7) : String(monthStr).substring(0, 7);
+
+    // 2. Write the consolidated report to NEW GOOGLE DOCS/PDFS
+    SpreadsheetApp.flush(); 
+    
+    const allCombinedCompanyNames = Object.keys(combinedReport).sort();
+    
+    for (const companyName of allCombinedCompanyNames) {
+      const coData = combinedReport[companyName]; // Get the combined data
+      
+      // Find the correct template ID
+      let templateId = templateIdMap[companyName];
+      if (!templateId) {
+          templateId = templateIdMap["(Standard)"];
+      }
+      if (!templateId) {
+          templateId = DEFAULT_REPORT_TEMPLATE_ID; // Final fallback
+      }
+      
+      // Run AI Correction
+      const aiResult = runAICorrection(coData.notes, companyName + " (Combined)");
+      coData.notes = aiResult.correctedNotesData;
+      
+      // Create the new document
+      const newDocFile = DriveApp.getFileById(templateId).makeCopy(outputFolder);
+      const newDoc = DocumentApp.openById(newDocFile.getId());
+      const body = newDoc.getBody();
+      
+      // Replace simple tags
+      const totalHours = (coData.totalDurationMs / (1000 * 60 * 60)).toFixed(2);
+      body.replaceText("{{CompanyName}}", coData.companyName);
+      body.replaceText("{{ReportMonth}}", monthStr);
+      body.replaceText("{{TotalVisits}}", coData.totalVisits);
+      body.replaceText("{{TotalHours}}", totalHours);
+      
+      // Add AI failure warning if present
+      if(aiResult.aiCorrectionFailed) {
+         body.insertParagraph(0, "Note: AI spelling/grammar check failed. The notes below are uncorrected.")
+              .setForegroundColor("#FF0000").setBold(true).setItalic(true);
+      }
+
+      // Build and insert tables
+      buildTableInDoc(body, "{{ChecklistTable}}", [["Checklist Item", "Times Ticked"]], coData.questionList.map(q => [q, coData.questionTally[q] || 0]));
+      
+      const sortedCustomHeaders = Array.from(coData.allCustomNoteHeaders).sort();
+      const noteTableHeaders = ["Date", "Worker", "Duration (Mins)", "Note (Standard)"].concat(sortedCustomHeaders);
+      
+      const noteTableData = coData.notes.sort((a,b) => a.date.getTime() - b.date.getTime()).map(noteEntry => {
+          const row = [
+              noteEntry.date.toLocaleDateString(), 
+              noteEntry.worker, 
+              noteEntry.durationMins.toFixed(0),
+              noteEntry.mainNote
+          ];
+          sortedCustomHeaders.forEach(header => {
+              row.push(noteEntry.customNotes[header] || "");
+          });
+          return row;
+      });
+      
+      buildTableInDoc(body, "{{NotesTable}}", [noteTableHeaders], noteTableData);
+      
+      // Save and close
+      newDoc.saveAndClose();
+      
+      // Create PDF
+      const pdfBlob = newDoc.getAs(MimeType.PDF);
+      const pdfFile = outputFolder.createFile(pdfBlob);
+      pdfFile.setName(`Report - ${coData.companyName} - ${monthStr}.pdf`);
+      
+      // Optional: Delete the temporary Google Doc
+      DriveApp.getFileById(newDoc.getId()).setTrashed(true);
+    }
+    
+    SpreadsheetApp.getUi().alert("PDF Reports Generated! Check your Google Drive folder: " + outputFolder.getName());
+
+  } catch (e) {
+    Logger.log(e);
+    SpreadsheetApp.getUi().alert("An error occurred: " + e.message);
+  }
+}
+
+// --- === NEW: LONGITUDINAL REPORTING FUNCTIONS === ---
+
+/**
+ * Utility function to be run ONCE per company to create their data sheet.
+ */
+function createLongitudinalWorkbook() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
+  
+  // 1. Get Company Name
+  const response = ui.prompt("Create Longitudinal Report", "Enter the exact Company Name (must match `Checklists` sheet):", ui.ButtonSet.OK_CANCEL);
+  if (response.getSelectedButton() !== ui.Button.OK) return;
+  const companyName = response.getResponseText().trim();
+  if (!companyName) return;
+  
+  const checklistSheet = ss.getSheetByName(CHECKLISTS_SHEET_NAME);
+  if (!checklistSheet) {
+    ui.alert("Error: 'Checklists' sheet not found.");
+    return;
+  }
+  
+  // 2. Find this company's question list
+  const checklistData = checklistSheet.getDataRange().getValues();
+  const checklistHeaders = checklistData.shift();
+  const longitudinalIdColIdx = checklistHeaders.indexOf(LONGITUDINAL_ID_HEADER);
+  
+  if (longitudinalIdColIdx === -1) {
+    ui.alert("Error: Could not find header '" + LONGITUDINAL_ID_HEADER + "' in 'Checklists' sheet. Please add it and try again.");
+    return;
+  }
+  
+  let questionList = null;
+  let companyRowIdx = -1;
+  
+  for (let i = 0; i < checklistData.length; i++) {
+    if (checklistData[i][0] === companyName) {
+      companyRowIdx = i + 2; // +1 for 0-index, +1 for header
+      const questions = [];
+      for (let j = 1; j < checklistHeaders.length; j++) {
+        if (j === longitudinalIdColIdx) continue;
+        if (checklistData[i][j]) {
+          const q = String(checklistData[i][j]);
+          if (!q.startsWith("#") && !q.startsWith("%")) {
+            questions.push(q);
+          }
+        } else {
+          break;
+        }
+      }
+      questionList = questions;
+      break;
+    }
+  }
+
+  // 3. Create the new Spreadsheet
+  const newSheet = SpreadsheetApp.create(`Longitudinal Report - ${companyName}`);
+  const newSheetId = newSheet.getId();
+  const dataTab = newSheet.getSheets()[0];
+  dataTab.setName("Data");
+  
+  // 4. Create Headers in the new sheet
+  const newHeaders = ["Month", "Total Visits", "Total Hours"].concat(questionList);
+  dataTab.getRange(1, 1, 1, newHeaders.length).setValues([newHeaders]).setFontWeight("bold");
+  dataTab.setFrozenRows(1);
+  
+  // 5. Link the new Sheet ID back to the Checklists sheet
+  checklistSheet.getRange(companyRowIdx, longitudinalIdColIdx + 1).setValue(newSheetId);
+  
+  ui.alert(`Success! New workbook created for ${companyName}. The ID has been linked. You can now build charts in that new sheet.`);
+}
+
+/**
+ * Appends the latest month's data to each company's longitudinal report.
+ * Assign this to a button on the "Master Report" sheet.
+ */
+function runAllLongitudinalReports() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const controlSheet = ss.getSheetByName("Master Report");
+  
+  if (!controlSheet) {
+    SpreadsheetApp.getUi().alert("Error: 'Master Report' sheet not found.");
+    return;
+  }
+  
+  let monthStr = controlSheet.getRange("B1").getValue(); 
+  if (!monthStr) {
+    SpreadsheetApp.getUi().alert("Please enter a Month (YYYY-MM) in cell B1.");
+    return;
+  }
+  
+  try {
+    // 1. Aggregate all data
+    const aggregatedData = _aggregateDataForMonth(monthStr, ss);
+    if (!aggregatedData) return; // Error was already handled
+    
+    const { combinedReport, longitudinalIdMap } = aggregatedData;
+    monthStr = (monthStr instanceof Date) ? monthStr.toISOString().substring(0, 7) : String(monthStr).substring(0, 7);
+
+    // 2. Loop through all companies that have a longitudinal sheet ID
+    const allCompanyNames = Object.keys(longitudinalIdMap);
+    if (allCompanyNames.length === 0) {
+      throw new Error("No companies have a 'Longitudinal Report Sheet ID' set in the 'Checklists' sheet.");
+    }
+    
+    SpreadsheetApp.flush(); 
+    let successCount = 0;
+    
+    for (const companyName of allCompanyNames) {
+      const longitudinalSheetId = longitudinalIdMap[companyName];
+      const coData = combinedReport[companyName];
+      
+      if (!coData) {
+         Logger.log(`No data found for ${companyName} for ${monthStr}. Skipping.`);
+         continue;
+      }
+      
+      try {
+        const reportWb = SpreadsheetApp.openById(longitudinalSheetId);
+        const reportSheet = reportWb.getSheets()[0];
+        const headers = reportSheet.getRange(1, 1, 1, reportSheet.getLastColumn()).getValues()[0];
+        
+        // Build the new row
+        const newRow = [];
+        newRow.push(monthStr); // Column 1: Month
+        newRow.push(coData.totalVisits); // Column 2: Total Visits
+        newRow.push((coData.totalDurationMs / (1000 * 60 * 60)).toFixed(2)); // Column 3: Total Hours
+        
+        // Match checklist data to headers
+        for (let i = 3; i < headers.length; i++) {
+          const question = headers[i];
+          const tally = coData.questionTally[question] || 0;
+          newRow.push(tally);
+        }
+        
+        // Append the new row
+        reportSheet.appendRow(newRow);
+        successCount++;
+        Logger.log(`Successfully appended data for ${companyName}.`);
+        
+      } catch (e) {
+        Logger.log(`Error processing longitudinal report for ${companyName}: ${e.message}`);
+      }
+    }
+    
+    SpreadsheetApp.getUi().alert(`Longitudinal Data Append Complete! Successfully updated ${successCount} of ${allCompanyNames.length} company workbooks.`);
+
+  } catch (e) {
+    Logger.log(e);
+    SpreadsheetApp.getUi().alert("An error occurred: " + e.message);
+  }
 }
 
 /**
