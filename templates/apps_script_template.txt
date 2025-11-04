@@ -120,8 +120,9 @@ function doPost(e) {
     // Force phone numbers to text by prepending a single quote
     for (var key in data) {
       if (phoneHeaders.indexOf(key) > -1 && data[key]) {
-        if (data[key].charAt(0) !== "'" && data[key].charAt(0) !== "+") {
-          data[key] = "'" + data[key];
+        var phone = String(data[key]); // --- FIX: Ensure it's a string
+        if ((phone.charAt(0) === '0' || phone.charAt(0) === '+') && phone.charAt(0) !== "'") {
+          data[key] = "'" + phone;
         }
       }
     }
@@ -376,7 +377,162 @@ function sendAlertEmail(workerData, alertType) {
 
 // --- WSA REPORTING FUNCTION (SINGLE COMPANY) ---
 function generateMonthlyReport() {
-// ... (existing generateMonthlyReport function) ...
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const reportSheet = ss.getSheetByName("Reports");
+  const visitsSheet = ss.getSheetByName(VISITS_SHEET_NAME);
+  
+  if (!reportSheet || !visitsSheet) {
+    SpreadsheetApp.getUi().alert("Error: 'Reports' or 'Visits' sheet not found.");
+    return;
+  }
+
+  // 1. Get the report criteria from the 'Reports' sheet
+  let monthStr = reportSheet.getRange("B2").getValue(); 
+  const companyName = reportSheet.getRange("B1").getValue();
+  
+  if (!companyName || !monthStr) {
+    SpreadsheetApp.getUi().alert("Please enter a Company Name and a Month (YYYY-MM) in cells B1 and B2.");
+    return;
+  }
+
+  if (monthStr instanceof Date) {
+      var tz = ss.getSpreadsheetTimeZone();
+      monthStr = Utilities.formatDate(monthStr, tz, "yyyy-MM");
+  } else {
+      monthStr = String(monthStr).substring(0, 7); 
+  }
+  if (!/^\d{4}-\d{2}$/.test(monthStr)) {
+      SpreadsheetApp.getUi().alert("Please enter the month in YYYY-MM format (e.g., 2025-10).");
+      return;
+  }
+  
+  const parts = monthStr.split('-');
+  const year = parseInt(parts[0], 10);
+  const month = parseInt(parts[1], 10) - 1; 
+
+  const startDate = new Date(Date.UTC(year, month, 1)); 
+  const endDate = new Date(Date.UTC(year, month + 1, 1)); 
+  
+  reportSheet.getRange("B2").setValue(monthStr); 
+  
+  if (reportSheet.getLastRow() >= 5) {
+      reportSheet.getRange(5, 1, reportSheet.getLastRow() - 4, 10).clearContent();
+  }
+
+
+  const dataRange = visitsSheet.getDataRange();
+  const allData = dataRange.getValues();
+  const headers = allData.shift(); 
+
+  const companyCol = headers.indexOf("Company Name");
+  const departureCol = headers.indexOf("Actual Departure Time");
+  const reportCol = headers.indexOf("Visit Report Data");
+  const workerCol = headers.indexOf("Worker Name");
+
+  if (companyCol === -1 || departureCol === -1 || reportCol === -1 || workerCol === -1) {
+      SpreadsheetApp.getUi().alert("Error: Could not find required columns ('Company Name', 'Actual Departure Time', 'Visit Report Data', 'Worker Name') in 'Visits' sheet.");
+      return;
+  }
+
+  let visitCount = 0;
+  const questionTally = {}; 
+  const allNotes = []; 
+
+  for (let i = 0; i < allData.length; i++) {
+    const row = allData[i];
+    
+    if (row[companyCol] === companyName) {
+      
+      var departureTime = null;
+      try {
+        if(row[departureCol]){
+           departureTime = new Date(row[departureCol]);
+           if (isNaN(departureTime.getTime())) departureTime = null;
+        }
+      } catch(e) {} 
+
+      if (departureTime && departureTime >= startDate && departureTime < endDate) {
+        visitCount++;
+        
+        const reportJson = row[reportCol];
+        if (reportJson) {
+          try {
+            const report = JSON.parse(reportJson);
+            
+            if (report.checklist) {
+              for (const question in report.checklist) {
+                if (report.checklist[question] === true) { 
+                  questionTally[question] = (questionTally[question] || 0) + 1;
+                }
+              }
+            }
+            
+            // --- MODIFIED: Combine main note and custom notes ---
+            let combinedNotes = "";
+            if (report.notes) {
+              combinedNotes += report.notes;
+            }
+            if (report.custom_notes) {
+              for (const noteHeader in report.custom_notes) {
+                if (report.custom_notes[noteHeader]) {
+                  combinedNotes += `\n\n**${noteHeader}:** ${report.custom_notes[noteHeader]}`;
+                }
+              }
+            }
+            if (combinedNotes) {
+              allNotes.push(`[${departureTime.toLocaleDateString()} - ${row[workerCol]}]: ${combinedNotes}`);
+            }
+            // --- END MODIFIED ---
+
+          } catch (e) {
+            Logger.log(`Could not parse report data in row ${i + 2}: ${reportJson}`);
+          }
+        }
+      }
+    }
+  }
+
+  let outputRow = 5;
+  reportSheet.getRange(outputRow, 1).setValue("Report for:").setFontWeight("bold");
+  reportSheet.getRange(outputRow, 2).setValue(companyName);
+  outputRow++;
+  reportSheet.getRange(outputRow, 1).setValue("Month:").setFontWeight("bold");
+  reportSheet.getRange(outputRow, 2).setValue(monthStr);
+  outputRow++;
+  reportSheet.getRange(outputRow, 1).setValue("Total Visits:").setFontWeight("bold");
+  reportSheet.getRange(outputRow, 2).setValue(visitCount);
+  outputRow += 2; 
+
+  reportSheet.getRange(outputRow, 1).setValue("Checklist Totals").setFontWeight("bold");
+  reportSheet.getRange(outputRow, 2).setValue("Times Ticked").setFontWeight("bold");
+  outputRow++;
+  
+  var sortedQuestions = Object.keys(questionTally).sort(); 
+  
+  for (const question of sortedQuestions) {
+    reportSheet.getRange(outputRow, 1).setValue(question);
+    reportSheet.getRange(outputRow, 2).setValue(questionTally[question]);
+    outputRow++;
+  }
+  
+  outputRow++; 
+
+  reportSheet.getRange(outputRow, 1).setValue("All Visit Notes").setFontWeight("bold");
+  outputRow++;
+  
+  if (allNotes.length > 0) {
+      allNotes.forEach(note => {
+        reportSheet.getRange(outputRow, 1).setValue(note).setWrap(true);
+        outputRow++;
+      });
+  } else {
+       reportSheet.getRange(outputRow, 1).setValue("No notes recorded for this period.");
+  }
+  
+  reportSheet.autoResizeColumn(1);
+  reportSheet.autoResizeColumn(2);
+  
+  SpreadsheetApp.getUi().alert("Report Generated!");
 }
 
 // --- === MODIFIED: generateMasterMonthlyReport (v2.9 - Columnar Notes) === ---
@@ -386,8 +542,9 @@ function generateMonthlyReport() {
  */
 function runAICorrection(notesArray, companyName) {
   let aiCorrectionFailed = false;
-  let correctedNotes = notesArray.map(n => n.note); // Start with original notes
-
+  // This function now receives the full note entry objects
+  // We will modify the .mainNote and .customNotes properties directly
+  
   if (GEMINI_API_KEY && GEMINI_API_KEY !== "YOUR_GEMINI_API_KEY_HERE" && notesArray.length > 0) {
     Logger.log("Starting AI note correction for " + companyName);
     try {
@@ -477,48 +634,49 @@ function runAICorrection(notesArray, companyName) {
 
 /**
  * Helper function to write aggregated data to a report sheet.
+ * --- THIS IS THE BUGGY FUNCTION ---
  */
 function writeReportToTab(reportSheet, coData, reportTitle, monthStr, aiCorrectionFailed, allCustomNoteHeaders) {
   let outputRow = 1; 
 
-  // Write company header
-  newSheet.getRange(outputRow, 1).setValue(reportTitle).setFontWeight("bold").setBackground("#4a5568").setFontColor("#ffffff");
-  newSheet.getRange(outputRow, 1, 1, 4 + allCustomNoteHeaders.length).merge(); // Merge across all columns
+  // --- === FIX: Use reportSheet instead of newSheet === ---
+  reportSheet.getRange(outputRow, 1).setValue(reportTitle).setFontWeight("bold").setBackground("#4a5568").setFontColor("#ffffff");
+  reportSheet.getRange(outputRow, 1, 1, 4 + allCustomNoteHeaders.length).merge(); // Merge across all columns
   outputRow++;
   
   // Write Stats
-  newSheet.getRange(outputRow, 1).setValue("Report Month:").setFontWeight("bold");
-  newSheet.getRange(outputRow, 2).setValue(monthStr);
+  reportSheet.getRange(outputRow, 1).setValue("Report Month:").setFontWeight("bold");
+  reportSheet.getRange(outputRow, 2).setValue(monthStr);
   outputRow++;
-  newSheet.getRange(outputRow, 1).setValue("Total Visits:").setFontWeight("bold");
-  newSheet.getRange(outputRow, 2).setValue(coData.totalVisits);
+  reportSheet.getRange(outputRow, 1).setValue("Total Visits:").setFontWeight("bold");
+  reportSheet.getRange(outputRow, 2).setValue(coData.totalVisits);
   outputRow++;
   
-  newSheet.getRange(outputRow, 1).setValue("Total Hours On-Site (Calculated):").setFontWeight("bold");
+  reportSheet.getRange(outputRow, 1).setValue("Total Hours On-Site (Calculated):").setFontWeight("bold");
   const totalHours = coData.totalDurationMs / (1000 * 60 * 60); 
-  newSheet.getRange(outputRow, 2).setValue(totalHours.toFixed(2));
+  reportSheet.getRange(outputRow, 2).setValue(totalHours.toFixed(2));
   outputRow += 2; 
 
   // Write Checklist Totals
-  newSheet.getRange(outputRow, 1).setValue("Checklist Totals").setFontWeight("bold");
-  newSheet.getRange(outputRow, 2).setValue("Times Ticked").setFontWeight("bold");
+  reportSheet.getRange(outputRow, 1).setValue("Checklist Totals").setFontWeight("bold");
+  reportSheet.getRange(outputRow, 2).setValue("Times Ticked").setFontWeight("bold");
   outputRow++;
   
   if (coData.questionList.length > 0) {
       for (const question of coData.questionList) {
-          newSheet.getRange(outputRow, 1).setValue(question);
-          newSheet.getRange(outputRow, 2).setValue(coData.questionTally[question]);
+          reportSheet.getRange(outputRow, 1).setValue(question);
+          reportSheet.getRange(outputRow, 2).setValue(coData.questionTally[question]);
           outputRow++;
       }
   } else {
-       newSheet.getRange(outputRow, 1).setValue("No checklist data recorded.").setFontStyle("italic");
+       reportSheet.getRange(outputRow, 1).setValue("No checklist data recorded.").setFontStyle("italic");
        outputRow++;
   }
   
   outputRow++; 
   
   if (aiCorrectionFailed) {
-    newSheet.getRange(outputRow, 1, 1, 4 + allCustomNoteHeaders.length).setValue("Note: AI spelling/grammar check failed. The notes below are uncorrected.")
+    reportSheet.getRange(outputRow, 1, 1, 4 + allCustomNoteHeaders.length).setValue("Note: AI spelling/grammar check failed. The notes below are uncorrected.")
       .setFontColor("#ff0000") // Red
       .setFontWeight("bold")
       .setFontStyle("italic")
@@ -529,13 +687,13 @@ function writeReportToTab(reportSheet, coData, reportTitle, monthStr, aiCorrecti
 
   // --- MODIFIED: Write All Notes (in dynamic columns) ---
   let col = 1;
-  newSheet.getRange(outputRow, col++).setValue("Date").setFontWeight("bold");
-  newSheet.getRange(outputRow, col++).setValue("Worker").setFontWeight("bold");
-  newSheet.getRange(outputRow, col++).setValue("Duration (Mins)").setFontWeight("bold");
-  newSheet.getRange(outputRow, col++).setValue("Note (Standard)").setFontWeight("bold");
+  reportSheet.getRange(outputRow, col++).setValue("Date").setFontWeight("bold");
+  reportSheet.getRange(outputRow, col++).setValue("Worker").setFontWeight("bold");
+  reportSheet.getRange(outputRow, col++).setValue("Duration (Mins)").setFontWeight("bold");
+  reportSheet.getRange(outputRow, col++).setValue("Note (Standard)").setFontWeight("bold");
   // Add custom note headers
   allCustomNoteHeaders.forEach(header => {
-      newSheet.getRange(outputRow, col++).setValue(header).setFontWeight("bold");
+      reportSheet.getRange(outputRow, col++).setValue(header).setFontWeight("bold");
   });
   outputRow++;
   
@@ -546,38 +704,39 @@ function writeReportToTab(reportSheet, coData, reportTitle, monthStr, aiCorrecti
       
       coData.notes.forEach(noteEntry => {
           let noteCol = 1;
-          newSheet.getRange(outputRow, noteCol++).setValue(noteEntry.date).setNumberFormat("yyyy-mm-dd"); 
-          newSheet.getRange(outputRow, noteCol++).setValue(noteEntry.worker);
-          newSheet.getRange(outputRow, noteCol++).setValue(noteEntry.durationMins.toFixed(0));
-          newSheet.getRange(outputRow, noteCol++).setValue(noteEntry.mainNote).setWrap(true);
+          reportSheet.getRange(outputRow, noteCol++).setValue(noteEntry.date).setNumberFormat("yyyy-mm-dd"); 
+          reportSheet.getRange(outputRow, noteCol++).setValue(noteEntry.worker);
+          reportSheet.getRange(outputRow, noteCol++).setValue(noteEntry.durationMins.toFixed(0));
+          reportSheet.getRange(outputRow, noteCol++).setValue(noteEntry.mainNote).setWrap(true);
 
           // Add custom notes in the correct columns
           allCustomNoteHeaders.forEach(header => {
-              newSheet.getRange(outputRow, noteCol++).setValue(noteEntry.customNotes[header] || "").setWrap(true);
+              reportSheet.getRange(outputRow, noteCol++).setValue(noteEntry.customNotes[header] || "").setWrap(true);
           });
 
           monthTotalMinutes += noteEntry.durationMins;
           outputRow++;
       });
   } else {
-       newSheet.getRange(outputRow, 1, 1, 4 + allCustomNoteHeaders.length).setValue("No notes recorded for this period.").setFontStyle("italic").merge();
+       reportSheet.getRange(outputRow, 1, 1, 4 + allCustomNoteHeaders.length).setValue("No notes recorded for this period.").setFontStyle("italic").merge();
        outputRow++;
   }
   
   // Add Total row for this company
-  newSheet.getRange(outputRow, 2).setValue("Total Hours (from visits):").setFontWeight("bold");
-  newSheet.getRange(outputRow, 3).setValue(monthTotalMinutes / 60).setNumberFormat("0.00").setFontWeight("bold");
+  reportSheet.getRange(outputRow, 2).setValue("Total Hours (from visits):").setFontWeight("bold");
+  reportSheet.getRange(outputRow, 3).setValue(monthTotalMinutes / 60).setNumberFormat("0.00").setFontWeight("bold");
   
   // Auto-resize columns on the new sheet
-  newSheet.autoResizeColumn(1);
-  newSheet.autoResizeColumn(2);
-  newSheet.autoResizeColumn(4);
-  newSheet.setColumnWidth(3, 300); // Set fixed width for main note
+  reportSheet.autoResizeColumn(1);
+  reportSheet.autoResizeColumn(2);
+  reportSheet.autoResizeColumn(4);
+  reportSheet.setColumnWidth(3, 300); // Set fixed width for main note
   
   // Resize custom note columns
   for (let i = 0; i < allCustomNoteHeaders.length; i++) {
-    newSheet.setColumnWidth(5 + i, 250);
+    reportSheet.setColumnWidth(5 + i, 250);
   }
+  // --- === END FIX === ---
 }
 
 /**
