@@ -243,7 +243,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
               <ul class="list-disc list-inside space-y-2">
                 <li>If you go overdue or miss a check-in, the system will automatically email your emergency contact.</li>
                 <li><strong>To Cancel an Alert:</strong> Press and hold the <strong>"I AM SAFE"</strong> button for 1 second and enter your **normal PIN**. This will clear the alert and then open the Visit Report form.</li>
-                <li><strong>Silent (Duress) Alert:</strong> If you are being forced to cancel an alert, enter your **Duress PIN** instead. The app will look like it has been cancelled, but it will silently send a high-priority alert to the monitor.</li>
+                <li><strong>Silent (Duress) Alert:</strong> If you are being forced to cancel an alert, enter your **Duress PIN** instead. The app will look like it has been cancelled/extended, but it will silently send a high-priority alert to the monitor.</li>
             </ul>
 
         </div>
@@ -812,6 +812,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             (position) => {
                  if (!state.activeVisit) return; 
                 const { latitude, longitude } = position.coords;
+                // --- === BUG FIX: Use gpsData.longitude === ---
                 sendToGoogleSheet({ "Arrival Time": state.activeVisit.arrivalTimeForSheet, "Last Known GPS": `${latitude},${longitude}`, "GPS Timestamp": new Date().toISOString(), "Notes": `${notePrefix}: Successfully retrieved GPS.` });
             },
             (error) => {
@@ -900,6 +901,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
     }
     // --- END UPDATED tick ---
 
+    // --- UPDATED triggerPanicAlert (OTG v1.5 - BUG FIX) ---
     function triggerPanicAlert() {
         if (!state.activeVisit) return; 
         playSoundAndVibrate('panic');
@@ -908,7 +910,8 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
              if (!state.activeVisit) return; 
             const data = { "Arrival Time": state.activeVisit.arrivalTimeForSheet, "Alarm Status": 'EMERGENCY - PANIC BUTTON', "Notes": 'Panic button activated by worker.' };
             if (gpsData) {
-                data["Last Known GPS"] = `${gpsData.latitude},${longitude}`;
+                // --- === BUG FIX: Was `longitude`, changed to `gpsData.longitude` === ---
+                data["Last Known GPS"] = `${gpsData.latitude},${gpsData.longitude}`;
                 data["GPS Timestamp"] = new Date().toISOString();
                 data.Notes += ' GPS successfully retrieved.';
             } else {
@@ -928,6 +931,7 @@ header button svg, .edit-location-btn svg { pointer-events: none; }
             sendPanic(null);
         }
     }
+    // --- END UPDATED triggerPanicAlert ---
     
     function triggerCheckin() {
         showModal('checkin');
