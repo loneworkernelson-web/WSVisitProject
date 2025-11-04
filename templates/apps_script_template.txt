@@ -11,6 +11,12 @@ var CHECKLISTS_SHEET_NAME = "Checklists";
 var REPORT_TAB_PREFIX = "Report - "; 
 
 // --- WEB APP ENDPOINTS ---
+
+/**
+ * Handles GET requests.
+ * 1. Monitor App (JSONP): If 'callback' param exists, validates 'token' and returns all data from [VISITS_SHEET_NAME].
+ * 2. Worker App (JSON): If 'action=getForms' param exists, returns custom checklist from [CHECKLISTS_SHEET_NAME] (no key needed).
+ */
 function doGet(e) {
   // 1. Monitor App Request (JSONP)
   if (e.parameter.callback) {
@@ -111,16 +117,14 @@ function doPost(e) {
     var batteryLevelColIdx = headers.indexOf("Battery Level") + 1; 
     var phoneHeaders = ["Worker Phone Number", "Emergency Contact Number", "Escalation Contact Number"];
 
-    // --- MODIFIED: Phone Number Fix ---
+    // Force phone numbers to text by prepending a single quote
     for (var key in data) {
       if (phoneHeaders.indexOf(key) > -1 && data[key]) {
-        var phone = String(data[key]);
-        if ((phone.charAt(0) === '0' || phone.charAt(0) === '+') && phone.charAt(0) !== "'") {
-          data[key] = "'" + phone;
+        if (data[key].charAt(0) !== "'" && data[key].charAt(0) !== "+") {
+          data[key] = "'" + data[key];
         }
       }
     }
-    // --- END MODIFIED ---
 
     // Find existing row or create a new one
     var dataRange = sheet.getDataRange().getValues();
@@ -196,7 +200,7 @@ function doPost(e) {
             });
        } else {
            workerDataForEmail = { ...data }; // Clone data
-            headers.forEach(function(header) {
+            phoneHeaders.forEach(function(header) {
                  if (workerDataForEmail[header] && typeof workerDataForEmail[header] === 'string' && workerDataForEmail[header].charAt(0) === "'") {
                       workerDataForEmail[header] = workerDataForEmail[header].substring(1);
                  }
@@ -216,7 +220,6 @@ function doPost(e) {
 
 // --- AUTOMATED TRIGGER FUNCTION ---
 function checkOverdueWorkers() {
-// ... (existing checkOverdueWorkers function, no changes needed) ...
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
 
@@ -288,7 +291,6 @@ function checkOverdueWorkers() {
 
 // --- EMAIL HELPER FUNCTION ---
 function sendAlertEmail(workerData, alertType) {
-// ... (existing sendAlertEmail function, updated for branding) ...
   var recipient = alertType === 'ESCALATION_SENT' ? workerData['Escalation Contact Email'] : workerData['Emergency Contact Email'];
   var subject = '';
   var body = '';
@@ -377,7 +379,7 @@ function generateMonthlyReport() {
 // ... (existing generateMonthlyReport function) ...
 }
 
-// --- === MODIFIED: generateMasterMonthlyReport (v2.8 - Combined Reports) === ---
+// --- === MODIFIED: generateMasterMonthlyReport (v2.9 - Columnar Notes) === ---
 
 /**
  * Helper function to run AI correction on an array of notes.
@@ -389,8 +391,24 @@ function runAICorrection(notesArray, companyName) {
   if (GEMINI_API_KEY && GEMINI_API_KEY !== "YOUR_GEMINI_API_KEY_HERE" && notesArray.length > 0) {
     Logger.log("Starting AI note correction for " + companyName);
     try {
-      const rawNotes = notesArray.map(n => n.note); 
-      
+      // --- MODIFIED: Create an array of only the note strings ---
+      const rawNotes = [];
+      notesArray.forEach(entry => {
+        rawNotes.push(entry.mainNote); // Add the main note
+        if (entry.customNotes) {
+          Object.keys(entry.customNotes).forEach(key => {
+            rawNotes.push(entry.customNotes[key]); // Add each custom note
+          });
+        }
+      });
+
+      // Filter out empty strings
+      const nonEmptyNotes = rawNotes.filter(n => n && n.trim() !== "");
+      if (nonEmptyNotes.length === 0) {
+        Logger.log("No notes to correct for " + companyName);
+        return { correctedNotesData: notesArray, aiCorrectionFailed: false };
+      }
+
       const systemPrompt = "You are a helpful proofreading assistant. You will be given a JSON array of visit notes. Correct any spelling and grammar mistakes in each note to professional New Zealand English. Do not add new information or change the meaning. Respond with a JSON array of the same length, containing the corrected notes. If a note is empty or fine, return it as-is.";
       
       const schema = {
@@ -399,7 +417,7 @@ function runAICorrection(notesArray, companyName) {
       };
       
       const payload = {
-        contents: [{ parts: [{ text: JSON.stringify(rawNotes) }] }],
+        contents: [{ parts: [{ text: JSON.stringify(nonEmptyNotes) }] }],
         systemInstruction: { parts: [{ text: systemPrompt }] },
         generationConfig: {
           responseMimeType: "application/json",
@@ -421,18 +439,30 @@ function runAICorrection(notesArray, companyName) {
       
       if (responseCode === 200) {
         const result = JSON.parse(response.getContentText());
-        const parsedNotes = JSON.parse(result.candidates[0].content.parts[0].text);
+        const correctedNotes = JSON.parse(result.candidates[0].content.parts[0].text);
         
-        if (parsedNotes.length === notesArray.length) {
-          // Overwrite the 'note' property in the original array
-          for (let i = 0; i < notesArray.length; i++) {
-            notesArray[i].note = parsedNotes[i]; 
-          }
+        // --- MODIFIED: Re-integrate corrected notes ---
+        if (correctedNotes.length === nonEmptyNotes.length) {
+          let correctedIndex = 0;
+          // Loop through the original notesArray and replace non-empty notes
+          notesArray.forEach(entry => {
+            if (entry.mainNote && entry.mainNote.trim() !== "") {
+              entry.mainNote = correctedNotes[correctedIndex++];
+            }
+            if (entry.customNotes) {
+              Object.keys(entry.customNotes).forEach(key => {
+                if (entry.customNotes[key] && entry.customNotes[key].trim() !== "") {
+                  entry.customNotes[key] = correctedNotes[correctedIndex++];
+                }
+              });
+            }
+          });
           Logger.log("Successfully corrected notes for " + companyName);
         } else {
           Logger.log("AI returned different number of notes. Skipping correction for " + companyName);
           aiCorrectionFailed = true; 
         }
+        // --- END MODIFIED ---
       } else {
           Logger.log("AI API Error for " + companyName + ": " + response.getContentText());
           aiCorrectionFailed = true; 
@@ -448,47 +478,47 @@ function runAICorrection(notesArray, companyName) {
 /**
  * Helper function to write aggregated data to a report sheet.
  */
-function writeReportToTab(reportSheet, coData, reportTitle, monthStr, aiCorrectionFailed) {
+function writeReportToTab(reportSheet, coData, reportTitle, monthStr, aiCorrectionFailed, allCustomNoteHeaders) {
   let outputRow = 1; 
 
   // Write company header
-  reportSheet.getRange(outputRow, 1).setValue(reportTitle).setFontWeight("bold").setBackground("#4a5568").setFontColor("#ffffff");
-  reportSheet.getRange(outputRow, 1, 1, 4).merge(); 
+  newSheet.getRange(outputRow, 1).setValue(reportTitle).setFontWeight("bold").setBackground("#4a5568").setFontColor("#ffffff");
+  newSheet.getRange(outputRow, 1, 1, 4 + allCustomNoteHeaders.length).merge(); // Merge across all columns
   outputRow++;
   
   // Write Stats
-  reportSheet.getRange(outputRow, 1).setValue("Report Month:").setFontWeight("bold");
-  reportSheet.getRange(outputRow, 2).setValue(monthStr);
+  newSheet.getRange(outputRow, 1).setValue("Report Month:").setFontWeight("bold");
+  newSheet.getRange(outputRow, 2).setValue(monthStr);
   outputRow++;
-  reportSheet.getRange(outputRow, 1).setValue("Total Visits:").setFontWeight("bold");
-  reportSheet.getRange(outputRow, 2).setValue(coData.totalVisits);
+  newSheet.getRange(outputRow, 1).setValue("Total Visits:").setFontWeight("bold");
+  newSheet.getRange(outputRow, 2).setValue(coData.totalVisits);
   outputRow++;
   
-  reportSheet.getRange(outputRow, 1).setValue("Total Hours On-Site (Calculated):").setFontWeight("bold");
+  newSheet.getRange(outputRow, 1).setValue("Total Hours On-Site (Calculated):").setFontWeight("bold");
   const totalHours = coData.totalDurationMs / (1000 * 60 * 60); 
-  reportSheet.getRange(outputRow, 2).setValue(totalHours.toFixed(2));
+  newSheet.getRange(outputRow, 2).setValue(totalHours.toFixed(2));
   outputRow += 2; 
 
   // Write Checklist Totals
-  reportSheet.getRange(outputRow, 1).setValue("Checklist Totals").setFontWeight("bold");
-  reportSheet.getRange(outputRow, 2).setValue("Times Ticked").setFontWeight("bold");
+  newSheet.getRange(outputRow, 1).setValue("Checklist Totals").setFontWeight("bold");
+  newSheet.getRange(outputRow, 2).setValue("Times Ticked").setFontWeight("bold");
   outputRow++;
   
   if (coData.questionList.length > 0) {
       for (const question of coData.questionList) {
-          reportSheet.getRange(outputRow, 1).setValue(question);
-          reportSheet.getRange(outputRow, 2).setValue(coData.questionTally[question]);
+          newSheet.getRange(outputRow, 1).setValue(question);
+          newSheet.getRange(outputRow, 2).setValue(coData.questionTally[question]);
           outputRow++;
       }
   } else {
-       reportSheet.getRange(outputRow, 1).setValue("No checklist data recorded.").setFontStyle("italic");
+       newSheet.getRange(outputRow, 1).setValue("No checklist data recorded.").setFontStyle("italic");
        outputRow++;
   }
   
   outputRow++; 
   
   if (aiCorrectionFailed) {
-    newSheet.getRange(outputRow, 1, 1, 4).setValue("Note: AI spelling/grammar check failed. The notes below are uncorrected.")
+    newSheet.getRange(outputRow, 1, 1, 4 + allCustomNoteHeaders.length).setValue("Note: AI spelling/grammar check failed. The notes below are uncorrected.")
       .setFontColor("#ff0000") // Red
       .setFontWeight("bold")
       .setFontStyle("italic")
@@ -497,39 +527,57 @@ function writeReportToTab(reportSheet, coData, reportTitle, monthStr, aiCorrecti
     outputRow++;
   }
 
-  // Write All Notes (in four columns)
-  reportSheet.getRange(outputRow, 1).setValue("Date").setFontWeight("bold");
-  reportSheet.getRange(outputRow, 2).setValue("Worker").setFontWeight("bold");
-  reportSheet.getRange(outputRow, 3).setValue("Note").setFontWeight("bold");
-  reportSheet.getRange(outputRow, 4).setValue("Duration (Mins)").setFontWeight("bold");
+  // --- MODIFIED: Write All Notes (in dynamic columns) ---
+  let col = 1;
+  newSheet.getRange(outputRow, col++).setValue("Date").setFontWeight("bold");
+  newSheet.getRange(outputRow, col++).setValue("Worker").setFontWeight("bold");
+  newSheet.getRange(outputRow, col++).setValue("Duration (Mins)").setFontWeight("bold");
+  newSheet.getRange(outputRow, col++).setValue("Note (Standard)").setFontWeight("bold");
+  // Add custom note headers
+  allCustomNoteHeaders.forEach(header => {
+      newSheet.getRange(outputRow, col++).setValue(header).setFontWeight("bold");
+  });
   outputRow++;
   
   let monthTotalMinutes = 0; 
   
   if (coData.notes.length > 0) {
       coData.notes.sort((a,b) => a.date.getTime() - b.date.getTime()); // Sort notes by date
+      
       coData.notes.forEach(noteEntry => {
-          reportSheet.getRange(outputRow, 1).setValue(noteEntry.date).setNumberFormat("yyyy-mm-dd"); 
-          reportSheet.getRange(outputRow, 2).setValue(noteEntry.worker);
-          reportSheet.getRange(outputRow, 3).setValue(noteEntry.note).setWrap(true);
-          reportSheet.getRange(outputRow, 4).setValue(noteEntry.durationMins.toFixed(0));
+          let noteCol = 1;
+          newSheet.getRange(outputRow, noteCol++).setValue(noteEntry.date).setNumberFormat("yyyy-mm-dd"); 
+          newSheet.getRange(outputRow, noteCol++).setValue(noteEntry.worker);
+          newSheet.getRange(outputRow, noteCol++).setValue(noteEntry.durationMins.toFixed(0));
+          newSheet.getRange(outputRow, noteCol++).setValue(noteEntry.mainNote).setWrap(true);
+
+          // Add custom notes in the correct columns
+          allCustomNoteHeaders.forEach(header => {
+              newSheet.getRange(outputRow, noteCol++).setValue(noteEntry.customNotes[header] || "").setWrap(true);
+          });
+
           monthTotalMinutes += noteEntry.durationMins;
           outputRow++;
       });
   } else {
-       reportSheet.getRange(outputRow, 1, 1, 4).setValue("No notes recorded for this period.").setFontStyle("italic").merge();
+       newSheet.getRange(outputRow, 1, 1, 4 + allCustomNoteHeaders.length).setValue("No notes recorded for this period.").setFontStyle("italic").merge();
        outputRow++;
   }
   
   // Add Total row for this company
-  reportSheet.getRange(outputRow, 3).setValue("Total Hours (from visits):").setFontWeight("bold");
-  reportSheet.getRange(outputRow, 4).setValue(monthTotalMinutes / 60).setNumberFormat("0.00").setFontWeight("bold");
+  newSheet.getRange(outputRow, 2).setValue("Total Hours (from visits):").setFontWeight("bold");
+  newSheet.getRange(outputRow, 3).setValue(monthTotalMinutes / 60).setNumberFormat("0.00").setFontWeight("bold");
   
   // Auto-resize columns on the new sheet
-  reportSheet.autoResizeColumn(1);
-  reportSheet.autoResizeColumn(2);
-  reportSheet.setColumnWidth(3, 350); 
-  reportSheet.autoResizeColumn(4); 
+  newSheet.autoResizeColumn(1);
+  newSheet.autoResizeColumn(2);
+  newSheet.autoResizeColumn(4);
+  newSheet.setColumnWidth(3, 300); // Set fixed width for main note
+  
+  // Resize custom note columns
+  for (let i = 0; i < allCustomNoteHeaders.length; i++) {
+    newSheet.setColumnWidth(5 + i, 250);
+  }
 }
 
 /**
@@ -658,7 +706,6 @@ function generateMasterMonthlyReport() {
 
     if (departureTime && departureTime >= startDate && departureTime < endDate) {
       
-      // --- Get the correct question list for this company ---
       let questionList = allChecklists[companyName]; // Try custom form first
       if (!questionList || questionList.length === 0) {
          questionList = allChecklists["(Standard)"]; // Try (Standard) form from sheet
@@ -678,6 +725,7 @@ function generateMasterMonthlyReport() {
           totalDurationMs: 0,
           questionList: questionList, 
           questionTally: initialTally, 
+          allCustomNoteHeaders: new Set(), // --- NEW: Track custom headers
           notes: []
         };
       }
@@ -688,11 +736,12 @@ function generateMasterMonthlyReport() {
         questionList.forEach(q => initialTally[q] = 0);
         combinedReport[companyName] = {
           companyName: companyName,
-          locationName: "All Sites", // Use a generic location
+          locationName: "All Sites", 
           totalVisits: 0,
           totalDurationMs: 0,
           questionList: questionList, 
           questionTally: initialTally, 
+          allCustomNoteHeaders: new Set(), // --- NEW: Track custom headers
           notes: []
         };
       }
@@ -701,7 +750,7 @@ function generateMasterMonthlyReport() {
       const combData = combinedReport[companyName];
       
       coData.totalVisits++;
-      combData.totalVisits++; // Add to combined
+      combData.totalVisits++; 
       
       var arrivalTime = null;
       var durationMs = 0; 
@@ -716,13 +765,15 @@ function generateMasterMonthlyReport() {
            durationMs = departureTime.getTime() - arrivalTime.getTime();
            if (durationMs > 0) {
                 coData.totalDurationMs += durationMs;
-                combData.totalDurationMs += durationMs; // Add to combined
+                combData.totalDurationMs += durationMs; 
            } else {
                durationMs = 0;
            }
       }
       
-      let mainNote = "--- No Report Data Submitted ---";
+      // --- MODIFIED: Store notes separately ---
+      let mainNote = "";
+      let customNotes = {};
       let durationMins = (durationMs / (1000 * 60));
       
       const reportJson = row[reportCol];
@@ -734,35 +785,39 @@ function generateMasterMonthlyReport() {
             for (const question in report.checklist) {
               if (coData.questionTally.hasOwnProperty(question) && report.checklist[question] === true) { 
                 coData.questionTally[question]++; 
-                combData.questionTally[question]++; // Add to combined
+                combData.questionTally[question]++; 
               }
             }
           }
           
-          let combinedNotes = report.notes || "";
+          mainNote = report.notes || "";
+          
           if (report.custom_notes) {
-              for (const noteHeader in report.custom_notes) {
-                  if (report.custom_notes[noteHeader]) {
-                      combinedNotes += `\n\n**${noteHeader}:** ${report.custom_notes[noteHeader]}`;
-                  }
-              }
+            customNotes = report.custom_notes;
+            for (const header in customNotes) {
+                coData.allCustomNoteHeaders.add(header); // Add to site report
+                combData.allCustomNoteHeaders.add(header); // Add to combined report
+            }
           }
-          mainNote = combinedNotes.trim() || "--- No Notes Entered ---";
 
         } catch (e) {
           Logger.log(`Could not parse report data in row ${i + 2}: ${reportJson}`);
           mainNote = "--- Error Parsing Report Data ---";
         }
+      } else {
+         mainNote = "--- No Report Data Submitted ---";
       }
       
       const noteEntry = {
             date: departureTime, 
             worker: row[workerCol], 
-            note: mainNote, 
+            mainNote: mainNote, 
+            customNotes: customNotes,
             durationMins: durationMins
       };
       coData.notes.push(noteEntry);
-      combData.notes.push(noteEntry); // Add to combined
+      combData.notes.push(noteEntry); 
+      // --- END MODIFIED ---
     }
   }
 
@@ -781,8 +836,11 @@ function generateMasterMonthlyReport() {
     const aiResult = runAICorrection(coData.notes, reportKey);
     coData.notes = aiResult.correctedNotesData; // Use the corrected (or original) notes
     
+    // Get the sorted list of custom note headers for this company
+    const sortedCustomHeaders = Array.from(coData.allCustomNoteHeaders).sort();
+    
     // Write the formatted data to the new tab
-    writeReportToTab(newSheet, coData, reportKey, monthStr, aiResult.aiCorrectionFailed);
+    writeReportToTab(newSheet, coData, reportKey, monthStr, aiResult.aiCorrectionFailed, sortedCustomHeaders);
   }
   
   // --- Loop 2: Write Combined Company Reports ---
@@ -800,8 +858,11 @@ function generateMasterMonthlyReport() {
       const aiResult = runAICorrection(coData.notes, companyName + " (Combined)");
       coData.notes = aiResult.correctedNotesData;
       
+      // Get the sorted list of ALL custom note headers for this company
+      const sortedCustomHeaders = Array.from(coData.allCustomNoteHeaders).sort();
+      
       // Write the formatted data to the new tab
-      writeReportToTab(newSheet, coData, companyName + " (Combined)", monthStr, aiResult.aiCorrectionFailed);
+      writeReportToTab(newSheet, coData, companyName + " (Combined)", monthStr, aiResult.aiCorrectionFailed, sortedCustomHeaders);
     }
   }
   
