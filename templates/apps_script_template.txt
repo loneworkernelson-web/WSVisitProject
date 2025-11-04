@@ -11,12 +11,6 @@ var CHECKLISTS_SHEET_NAME = "Checklists";
 var REPORT_TAB_PREFIX = "Report - "; 
 
 // --- WEB APP ENDPOINTS ---
-
-/**
- * Handles GET requests.
- * 1. Monitor App (JSONP): If 'callback' param exists, validates 'token' and returns all data from [VISITS_SHEET_NAME].
- * 2. Worker App (JSON): If 'action=getForms' param exists, returns custom checklist from [CHECKLISTS_SHEET_NAME] (no key needed).
- */
 function doGet(e) {
   // 1. Monitor App Request (JSONP)
   if (e.parameter.callback) {
@@ -202,7 +196,7 @@ function doPost(e) {
             });
        } else {
            workerDataForEmail = { ...data }; // Clone data
-            phoneHeaders.forEach(function(header) {
+            headers.forEach(function(header) {
                  if (workerDataForEmail[header] && typeof workerDataForEmail[header] === 'string' && workerDataForEmail[header].charAt(0) === "'") {
                       workerDataForEmail[header] = workerDataForEmail[header].substring(1);
                  }
@@ -381,165 +375,169 @@ function sendAlertEmail(workerData, alertType) {
 // --- WSA REPORTING FUNCTION (SINGLE COMPANY) ---
 function generateMonthlyReport() {
 // ... (existing generateMonthlyReport function) ...
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const reportSheet = ss.getSheetByName("Reports");
-  const visitsSheet = ss.getSheetByName(VISITS_SHEET_NAME);
-  
-  if (!reportSheet || !visitsSheet) {
-    SpreadsheetApp.getUi().alert("Error: 'Reports' or 'Visits' sheet not found.");
-    return;
-  }
+}
 
-  // 1. Get the report criteria from the 'Reports' sheet
-  let monthStr = reportSheet.getRange("B2").getValue(); 
-  const companyName = reportSheet.getRange("B1").getValue();
-  
-  if (!companyName || !monthStr) {
-    SpreadsheetApp.getUi().alert("Please enter a Company Name and a Month (YYYY-MM) in cells B1 and B2.");
-    return;
-  }
+// --- === MODIFIED: generateMasterMonthlyReport (v2.8 - Combined Reports) === ---
 
-  if (monthStr instanceof Date) {
-      var tz = ss.getSpreadsheetTimeZone();
-      monthStr = Utilities.formatDate(monthStr, tz, "yyyy-MM");
-  } else {
-      monthStr = String(monthStr).substring(0, 7); 
-  }
-  if (!/^\d{4}-\d{2}$/.test(monthStr)) {
-      SpreadsheetApp.getUi().alert("Please enter the month in YYYY-MM format (e.g., 2025-10).");
-      return;
-  }
-  
-  const parts = monthStr.split('-');
-  const year = parseInt(parts[0], 10);
-  const month = parseInt(parts[1], 10) - 1; 
+/**
+ * Helper function to run AI correction on an array of notes.
+ */
+function runAICorrection(notesArray, companyName) {
+  let aiCorrectionFailed = false;
+  let correctedNotes = notesArray.map(n => n.note); // Start with original notes
 
-  const startDate = new Date(Date.UTC(year, month, 1)); 
-  const endDate = new Date(Date.UTC(year, month + 1, 1)); 
-  
-  reportSheet.getRange("B2").setValue(monthStr); 
-  
-  if (reportSheet.getLastRow() >= 5) {
-      reportSheet.getRange(5, 1, reportSheet.getLastRow() - 4, 10).clearContent();
-  }
-
-
-  const dataRange = visitsSheet.getDataRange();
-  const allData = dataRange.getValues();
-  const headers = allData.shift(); 
-
-  const companyCol = headers.indexOf("Company Name");
-  const departureCol = headers.indexOf("Actual Departure Time");
-  const reportCol = headers.indexOf("Visit Report Data");
-  const workerCol = headers.indexOf("Worker Name");
-
-  if (companyCol === -1 || departureCol === -1 || reportCol === -1 || workerCol === -1) {
-      SpreadsheetApp.getUi().alert("Error: Could not find required columns ('Company Name', 'Actual Departure Time', 'Visit Report Data', 'Worker Name') in 'Visits' sheet.");
-      return;
-  }
-
-  let visitCount = 0;
-  const questionTally = {}; 
-  const allNotes = []; 
-
-  for (let i = 0; i < allData.length; i++) {
-    const row = allData[i];
-    
-    if (row[companyCol] === companyName) {
+  if (GEMINI_API_KEY && GEMINI_API_KEY !== "YOUR_GEMINI_API_KEY_HERE" && notesArray.length > 0) {
+    Logger.log("Starting AI note correction for " + companyName);
+    try {
+      const rawNotes = notesArray.map(n => n.note); 
       
-      var departureTime = null;
-      try {
-        if(row[departureCol]){
-           departureTime = new Date(row[departureCol]);
-           if (isNaN(departureTime.getTime())) departureTime = null;
+      const systemPrompt = "You are a helpful proofreading assistant. You will be given a JSON array of visit notes. Correct any spelling and grammar mistakes in each note to professional New Zealand English. Do not add new information or change the meaning. Respond with a JSON array of the same length, containing the corrected notes. If a note is empty or fine, return it as-is.";
+      
+      const schema = {
+        "type": "ARRAY",
+        "items": { "type": "STRING" }
+      };
+      
+      const payload = {
+        contents: [{ parts: [{ text: JSON.stringify(rawNotes) }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: schema
         }
-      } catch(e) {} 
-
-      if (departureTime && departureTime >= startDate && departureTime < endDate) {
-        visitCount++;
+      };
+      
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`;
+      
+      const options = {
+        method: 'POST',
+        contentType: 'application/json',
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true 
+      };
+      
+      const response = UrlFetchApp.fetch(apiUrl, options);
+      const responseCode = response.getResponseCode();
+      
+      if (responseCode === 200) {
+        const result = JSON.parse(response.getContentText());
+        const parsedNotes = JSON.parse(result.candidates[0].content.parts[0].text);
         
-        const reportJson = row[reportCol];
-        if (reportJson) {
-          try {
-            const report = JSON.parse(reportJson);
-            
-            if (report.checklist) {
-              for (const question in report.checklist) {
-                if (report.checklist[question] === true) { 
-                  questionTally[question] = (questionTally[question] || 0) + 1;
-                }
-              }
-            }
-            
-            // --- MODIFIED: Combine main note and custom notes ---
-            let combinedNotes = "";
-            if (report.notes) {
-              combinedNotes += report.notes;
-            }
-            if (report.custom_notes) {
-              for (const noteHeader in report.custom_notes) {
-                if (report.custom_notes[noteHeader]) {
-                  combinedNotes += `\n\n**${noteHeader}:** ${report.custom_notes[noteHeader]}`;
-                }
-              }
-            }
-            if (combinedNotes) {
-              allNotes.push(`[${departureTime.toLocaleDateString()} - ${row[workerCol]}]: ${combinedNotes}`);
-            }
-            // --- END MODIFIED ---
-
-          } catch (e) {
-            Logger.log(`Could not parse report data in row ${i + 2}: ${reportJson}`);
+        if (parsedNotes.length === notesArray.length) {
+          // Overwrite the 'note' property in the original array
+          for (let i = 0; i < notesArray.length; i++) {
+            notesArray[i].note = parsedNotes[i]; 
           }
+          Logger.log("Successfully corrected notes for " + companyName);
+        } else {
+          Logger.log("AI returned different number of notes. Skipping correction for " + companyName);
+          aiCorrectionFailed = true; 
         }
+      } else {
+          Logger.log("AI API Error for " + companyName + ": " + response.getContentText());
+          aiCorrectionFailed = true; 
       }
+    } catch(err) {
+      Logger.log("Error during AI note correction for " + companyName + ": " + err.toString());
+      aiCorrectionFailed = true; 
     }
   }
+  return { correctedNotesData: notesArray, aiCorrectionFailed: aiCorrectionFailed };
+}
 
-  let outputRow = 5;
-  reportSheet.getRange(outputRow, 1).setValue("Report for:").setFontWeight("bold");
-  reportSheet.getRange(outputRow, 2).setValue(companyName);
+/**
+ * Helper function to write aggregated data to a report sheet.
+ */
+function writeReportToTab(reportSheet, coData, reportTitle, monthStr, aiCorrectionFailed) {
+  let outputRow = 1; 
+
+  // Write company header
+  reportSheet.getRange(outputRow, 1).setValue(reportTitle).setFontWeight("bold").setBackground("#4a5568").setFontColor("#ffffff");
+  reportSheet.getRange(outputRow, 1, 1, 4).merge(); 
   outputRow++;
-  reportSheet.getRange(outputRow, 1).setValue("Month:").setFontWeight("bold");
+  
+  // Write Stats
+  reportSheet.getRange(outputRow, 1).setValue("Report Month:").setFontWeight("bold");
   reportSheet.getRange(outputRow, 2).setValue(monthStr);
   outputRow++;
   reportSheet.getRange(outputRow, 1).setValue("Total Visits:").setFontWeight("bold");
-  reportSheet.getRange(outputRow, 2).setValue(visitCount);
+  reportSheet.getRange(outputRow, 2).setValue(coData.totalVisits);
+  outputRow++;
+  
+  reportSheet.getRange(outputRow, 1).setValue("Total Hours On-Site (Calculated):").setFontWeight("bold");
+  const totalHours = coData.totalDurationMs / (1000 * 60 * 60); 
+  reportSheet.getRange(outputRow, 2).setValue(totalHours.toFixed(2));
   outputRow += 2; 
 
+  // Write Checklist Totals
   reportSheet.getRange(outputRow, 1).setValue("Checklist Totals").setFontWeight("bold");
   reportSheet.getRange(outputRow, 2).setValue("Times Ticked").setFontWeight("bold");
   outputRow++;
   
-  var sortedQuestions = Object.keys(questionTally).sort(); 
-  
-  for (const question of sortedQuestions) {
-    reportSheet.getRange(outputRow, 1).setValue(question);
-    reportSheet.getRange(outputRow, 2).setValue(questionTally[question]);
-    outputRow++;
+  if (coData.questionList.length > 0) {
+      for (const question of coData.questionList) {
+          reportSheet.getRange(outputRow, 1).setValue(question);
+          reportSheet.getRange(outputRow, 2).setValue(coData.questionTally[question]);
+          outputRow++;
+      }
+  } else {
+       reportSheet.getRange(outputRow, 1).setValue("No checklist data recorded.").setFontStyle("italic");
+       outputRow++;
   }
   
   outputRow++; 
+  
+  if (aiCorrectionFailed) {
+    newSheet.getRange(outputRow, 1, 1, 4).setValue("Note: AI spelling/grammar check failed. The notes below are uncorrected.")
+      .setFontColor("#ff0000") // Red
+      .setFontWeight("bold")
+      .setFontStyle("italic")
+      .setHorizontalAlignment("center")
+      .merge();
+    outputRow++;
+  }
 
-  reportSheet.getRange(outputRow, 1).setValue("All Visit Notes").setFontWeight("bold");
+  // Write All Notes (in four columns)
+  reportSheet.getRange(outputRow, 1).setValue("Date").setFontWeight("bold");
+  reportSheet.getRange(outputRow, 2).setValue("Worker").setFontWeight("bold");
+  reportSheet.getRange(outputRow, 3).setValue("Note").setFontWeight("bold");
+  reportSheet.getRange(outputRow, 4).setValue("Duration (Mins)").setFontWeight("bold");
   outputRow++;
   
-  if (allNotes.length > 0) {
-      allNotes.forEach(note => {
-        reportSheet.getRange(outputRow, 1).setValue(note).setWrap(true);
-        outputRow++;
+  let monthTotalMinutes = 0; 
+  
+  if (coData.notes.length > 0) {
+      coData.notes.sort((a,b) => a.date.getTime() - b.date.getTime()); // Sort notes by date
+      coData.notes.forEach(noteEntry => {
+          reportSheet.getRange(outputRow, 1).setValue(noteEntry.date).setNumberFormat("yyyy-mm-dd"); 
+          reportSheet.getRange(outputRow, 2).setValue(noteEntry.worker);
+          reportSheet.getRange(outputRow, 3).setValue(noteEntry.note).setWrap(true);
+          reportSheet.getRange(outputRow, 4).setValue(noteEntry.durationMins.toFixed(0));
+          monthTotalMinutes += noteEntry.durationMins;
+          outputRow++;
       });
   } else {
-       reportSheet.getRange(outputRow, 1).setValue("No notes recorded for this period.");
+       reportSheet.getRange(outputRow, 1, 1, 4).setValue("No notes recorded for this period.").setFontStyle("italic").merge();
+       outputRow++;
   }
   
+  // Add Total row for this company
+  reportSheet.getRange(outputRow, 3).setValue("Total Hours (from visits):").setFontWeight("bold");
+  reportSheet.getRange(outputRow, 4).setValue(monthTotalMinutes / 60).setNumberFormat("0.00").setFontWeight("bold");
+  
+  // Auto-resize columns on the new sheet
   reportSheet.autoResizeColumn(1);
   reportSheet.autoResizeColumn(2);
-  
-  SpreadsheetApp.getUi().alert("Report Generated!");
+  reportSheet.setColumnWidth(3, 350); 
+  reportSheet.autoResizeColumn(4); 
 }
 
-// --- === MODIFIED: generateMasterMonthlyReport (v2.6 - (Standard) fix + AI) === ---
+/**
+ * Generates a master report for ALL companies for a specified month.
+ * Creates a new, separate tab for each COMPANY-SITE combination.
+ * Assumes a sheet named "Master Report" exists.
+ * Input for month (e.g., 2025-10) is taken from cell B1 of "Master Report" sheet.
+ */
 function generateMasterMonthlyReport() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const controlSheet = ss.getSheetByName("Master Report"); // Output sheet
@@ -589,8 +587,8 @@ function generateMasterMonthlyReport() {
     }
   }
   
-  // --- 4. Cache ALL Checklists from sheet ---
-  const allChecklists = {}; // { "(Standard)": ["Q1", "Q2"], "Smith & Co.": ["Q1", "Q2"] }
+  // 3. Cache ALL Checklists from sheet
+  const allChecklists = {}; 
   const checklistData = checklistSheet.getDataRange().getValues();
   const checklistHeaders = checklistData.shift();
   checklistData.forEach(function(row) {
@@ -611,7 +609,7 @@ function generateMasterMonthlyReport() {
       }
   });
   
-  // --- 4.5 Define Standard Checklist FALLBACK (if (Standard) is missing from sheet) ---
+  // 4. Define Standard Checklist FALLBACK (if (Standard) is missing from sheet)
   const STANDARD_CHECKLIST_FALLBACK = [
         "Safety check completed",
         "Client goals reviewed",
@@ -626,24 +624,29 @@ function generateMasterMonthlyReport() {
   const headers = allData.shift(); 
 
   const companyCol = headers.indexOf("Company Name");
+  const locationCol = headers.indexOf("Location Name"); 
   const arrivalCol = headers.indexOf("Arrival Time"); 
   const departureCol = headers.indexOf("Actual Departure Time");
   const reportCol = headers.indexOf("Visit Report Data");
   const workerCol = headers.indexOf("Worker Name");
 
-  if (companyCol === -1 || arrivalCol === -1 || departureCol === -1 || reportCol === -1 || workerCol === -1) {
-      SpreadsheetApp.getUi().alert("Error: Could not find required columns ('Company Name', 'Arrival Time', 'Actual Departure Time', 'Visit Report Data', 'Worker Name') in 'Visits' sheet.");
+  if (companyCol === -1 || locationCol === -1 || arrivalCol === -1 || departureCol === -1 || reportCol === -1 || workerCol === -1) {
+      SpreadsheetApp.getUi().alert("Error: Could not find required columns ('Company Name', 'Location Name', 'Arrival Time', 'Actual Departure Time', 'Visit Report Data', 'Worker Name') in 'Visits' sheet.");
       return;
   }
 
   // 6. Process the data
   const masterReport = {}; 
+  const combinedReport = {}; // --- NEW: For combined reports
 
   for (let i = 0; i < allData.length; i++) {
     const row = allData[i];
     
     const companyName = row[companyCol];
-    if (!companyName) continue; 
+    const locationName = row[locationCol]; 
+    if (!companyName || !locationName) continue; 
+
+    const reportKey = companyName + " - " + locationName;
 
     var departureTime = null;
     try {
@@ -655,24 +658,22 @@ function generateMasterMonthlyReport() {
 
     if (departureTime && departureTime >= startDate && departureTime < endDate) {
       
-      if (!masterReport[companyName]) {
-        // --- FIXED: Determine question list ---
-        let questionList = allChecklists[companyName]; // Try custom form first
-        
-        if (!questionList || questionList.length === 0) {
-           // If no custom form, try (Standard) form from sheet
-           questionList = allChecklists["(Standard)"];
-        }
-        if (!questionList || questionList.length === 0) {
-          // If (Standard) also fails, use hardcoded fallback
-          questionList = STANDARD_CHECKLIST_FALLBACK;
-        }
-        // --- END FIX ---
-        
+      // --- Get the correct question list for this company ---
+      let questionList = allChecklists[companyName]; // Try custom form first
+      if (!questionList || questionList.length === 0) {
+         questionList = allChecklists["(Standard)"]; // Try (Standard) form from sheet
+      }
+      if (!questionList || questionList.length === 0) {
+        questionList = STANDARD_CHECKLIST_FALLBACK; // Use hardcoded fallback
+      }
+      
+      // Initialize the SITE-LEVEL report object
+      if (!masterReport[reportKey]) {
         const initialTally = {};
         questionList.forEach(q => initialTally[q] = 0);
-        
-        masterReport[companyName] = {
+        masterReport[reportKey] = {
+          companyName: companyName, 
+          locationName: locationName, 
           totalVisits: 0,
           totalDurationMs: 0,
           questionList: questionList, 
@@ -681,9 +682,26 @@ function generateMasterMonthlyReport() {
         };
       }
       
-      const coData = masterReport[companyName]; 
+      // Initialize the COMBINED report object
+      if (!combinedReport[companyName]) {
+        const initialTally = {};
+        questionList.forEach(q => initialTally[q] = 0);
+        combinedReport[companyName] = {
+          companyName: companyName,
+          locationName: "All Sites", // Use a generic location
+          totalVisits: 0,
+          totalDurationMs: 0,
+          questionList: questionList, 
+          questionTally: initialTally, 
+          notes: []
+        };
+      }
+      
+      const coData = masterReport[reportKey]; 
+      const combData = combinedReport[companyName];
       
       coData.totalVisits++;
+      combData.totalVisits++; // Add to combined
       
       var arrivalTime = null;
       var durationMs = 0; 
@@ -698,6 +716,7 @@ function generateMasterMonthlyReport() {
            durationMs = departureTime.getTime() - arrivalTime.getTime();
            if (durationMs > 0) {
                 coData.totalDurationMs += durationMs;
+                combData.totalDurationMs += durationMs; // Add to combined
            } else {
                durationMs = 0;
            }
@@ -715,16 +734,15 @@ function generateMasterMonthlyReport() {
             for (const question in report.checklist) {
               if (coData.questionTally.hasOwnProperty(question) && report.checklist[question] === true) { 
                 coData.questionTally[question]++; 
+                combData.questionTally[question]++; // Add to combined
               }
             }
           }
           
-          // Combine main note and custom notes
           let combinedNotes = report.notes || "";
           if (report.custom_notes) {
               for (const noteHeader in report.custom_notes) {
                   if (report.custom_notes[noteHeader]) {
-                      // Format: BOLD HEADER (in Markdown), newline, note text
                       combinedNotes += `\n\n**${noteHeader}:** ${report.custom_notes[noteHeader]}`;
                   }
               }
@@ -737,167 +755,56 @@ function generateMasterMonthlyReport() {
         }
       }
       
-      coData.notes.push({
+      const noteEntry = {
             date: departureTime, 
             worker: row[workerCol], 
             note: mainNote, 
             durationMins: durationMins
-      });
+      };
+      coData.notes.push(noteEntry);
+      combData.notes.push(noteEntry); // Add to combined
     }
   }
 
   // 7. Write the consolidated report to SEPARATE TABS
   SpreadsheetApp.flush(); 
   
-  const allCompanyNames = Object.keys(masterReport).sort(); 
-
-  for (const companyName of allCompanyNames) {
-    const coData = masterReport[companyName];
+  // --- Loop 1: Write Site-Specific Reports ---
+  const allReportKeys = Object.keys(masterReport).sort(); 
+  for (const reportKey of allReportKeys) {
+    const coData = masterReport[reportKey];
     
-    const newSheetName = REPORT_TAB_PREFIX + companyName.replace(/[\/\\?*\[\]]/g, '-').substring(0, 80); 
+    const newSheetName = REPORT_TAB_PREFIX + reportKey.replace(/[\/\\?*\[\]]/g, '-').substring(0, 80); 
     let newSheet = ss.insertSheet(newSheetName);
-    let outputRow = 1; 
-
-    // --- === AI CORRECTION STEP === ---
-    let aiCorrectionFailed = false; 
-    if (GEMINI_API_KEY && GEMINI_API_KEY !== "YOUR_GEMINI_API_KEY_HERE" && coData.notes.length > 0) {
-      Logger.log("Starting AI note correction for " + companyName);
-      try {
-        const rawNotes = coData.notes.map(n => n.note); 
-        
-        const systemPrompt = "You are a helpful proofreading assistant. You will be given a JSON array of visit notes. Correct any spelling and grammar mistakes in each note to professional New Zealand English. Do not add new information or change the meaning. Respond with a JSON array of the same length, containing the corrected notes. If a note is empty or fine, return it as-is.";
-        
-        const schema = {
-          "type": "ARRAY",
-          "items": { "type": "STRING" }
-        };
-        
-        const payload = {
-          contents: [{ parts: [{ text: JSON.stringify(rawNotes) }] }],
-          systemInstruction: { parts: [{ text: systemPrompt }] },
-          generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema: schema
-          }
-        };
-        
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`;
-        
-        const options = {
-          method: 'POST',
-          contentType: 'application/json',
-          payload: JSON.stringify(payload),
-          muteHttpExceptions: true 
-        };
-        
-        const response = UrlFetchApp.fetch(apiUrl, options);
-        const responseCode = response.getResponseCode();
-        
-        if (responseCode === 200) {
-          const result = JSON.parse(response.getContentText());
-          const correctedNotes = JSON.parse(result.candidates[0].content.parts[0].text);
-          
-          if (correctedNotes.length === coData.notes.length) {
-            for (let i = 0; i < coData.notes.length; i++) {
-              coData.notes[i].note = correctedNotes[i]; 
-            }
-            Logger.log("Successfully corrected notes for " + companyName);
-          } else {
-            Logger.log("AI returned different number of notes. Skipping correction for " + companyName);
-            aiCorrectionFailed = true; 
-          }
-        } else {
-            Logger.log("AI API Error for " + companyName + ": " + response.getContentText());
-            aiCorrectionFailed = true; 
-        }
-      } catch(err) {
-        Logger.log("Error during AI note correction for " + companyName + ": " + err.toString());
-        aiCorrectionFailed = true; 
-      }
-    }
-    // --- === END AI CORRECTION STEP === ---
-
-    // Write company header
-    newSheet.getRange(outputRow, 1).setValue(companyName).setFontWeight("bold").setBackground("#4a5568").setFontColor("#ffffff");
-    newSheet.getRange(outputRow, 1, 1, 4).merge(); 
-    outputRow++;
     
-    // Write Stats
-    newSheet.getRange(outputRow, 1).setValue("Report Month:").setFontWeight("bold");
-    newSheet.getRange(outputRow, 2).setValue(monthStr);
-    outputRow++;
-    newSheet.getRange(outputRow, 1).setValue("Total Visits:").setFontWeight("bold");
-    newSheet.getRange(outputRow, 2).setValue(coData.totalVisits);
-    outputRow++;
+    // Run AI Correction on this data batch
+    const aiResult = runAICorrection(coData.notes, reportKey);
+    coData.notes = aiResult.correctedNotesData; // Use the corrected (or original) notes
     
-    newSheet.getRange(outputRow, 1).setValue("Total Hours On-Site (Calculated):").setFontWeight("bold");
-    const totalHours = coData.totalDurationMs / (1000 * 60 * 60); 
-    newSheet.getRange(outputRow, 2).setValue(totalHours.toFixed(2));
-    outputRow += 2; 
-
-    // Write Checklist Totals
-    newSheet.getRange(outputRow, 1).setValue("Checklist Totals").setFontWeight("bold");
-    newSheet.getRange(outputRow, 2).setValue("Times Ticked").setFontWeight("bold");
-    outputRow++;
-    
-    if (coData.questionList.length > 0) {
-        for (const question of coData.questionList) {
-            newSheet.getRange(outputRow, 1).setValue(question);
-            newSheet.getRange(outputRow, 2).setValue(coData.questionTally[question]);
-            outputRow++;
-        }
-    } else {
-         newSheet.getRange(outputRow, 1).setValue("No checklist data recorded.").setFontStyle("italic");
-         outputRow++;
-    }
-    
-    outputRow++; 
-    
-    if (aiCorrectionFailed) {
-      newSheet.getRange(outputRow, 1, 1, 4).setValue("Note: AI spelling/grammar check failed. The notes below are uncorrected.")
-        .setFontColor("#ff0000") // Red
-        .setFontWeight("bold")
-        .setFontStyle("italic")
-        .setHorizontalAlignment("center")
-        .merge();
-      outputRow++;
-    }
-
-    // Write All Notes (in four columns)
-    newSheet.getRange(outputRow, 1).setValue("Date").setFontWeight("bold");
-    newSheet.getRange(outputRow, 2).setValue("Worker").setFontWeight("bold");
-    newSheet.getRange(outputRow, 3).setValue("Note").setFontWeight("bold");
-    newSheet.getRange(outputRow, 4).setValue("Duration (Mins)").setFontWeight("bold");
-    outputRow++;
-    
-    let monthTotalMinutes = 0; 
-    
-    if (coData.notes.length > 0) {
-        coData.notes.sort((a,b) => a.date.getTime() - b.date.getTime()); // Sort notes by date
-        coData.notes.forEach(noteEntry => {
-            newSheet.getRange(outputRow, 1).setValue(noteEntry.date).setNumberFormat("yyyy-mm-dd"); 
-            newSheet.getRange(outputRow, 2).setValue(noteEntry.worker);
-            newSheet.getRange(outputRow, 3).setValue(noteEntry.note).setWrap(true);
-            newSheet.getRange(outputRow, 4).setValue(noteEntry.durationMins.toFixed(0));
-            monthTotalMinutes += noteEntry.durationMins;
-            outputRow++;
-        });
-    } else {
-         newSheet.getRange(outputRow, 1, 1, 4).setValue("No notes recorded for this period.").setFontStyle("italic").merge();
-         outputRow++;
-    }
-    
-    // Add Total row for this company
-    newSheet.getRange(outputRow, 3).setValue("Total Hours (from visits):").setFontWeight("bold");
-    newSheet.getRange(outputRow, 4).setValue(monthTotalMinutes / 60).setNumberFormat("0.00").setFontWeight("bold");
-    
-    // Auto-resize columns on the new sheet
-    newSheet.autoResizeColumn(1);
-    newSheet.autoResizeColumn(2);
-    newSheet.setColumnWidth(3, 350); 
-    newSheet.autoResizeColumn(4); 
+    // Write the formatted data to the new tab
+    writeReportToTab(newSheet, coData, reportKey, monthStr, aiResult.aiCorrectionFailed);
   }
   
-  SpreadsheetApp.getUi().alert("Master Report Generated! New tabs have been created for each company.");
+  // --- Loop 2: Write Combined Company Reports ---
+  const allCombinedCompanyNames = Object.keys(combinedReport).sort();
+  for (const companyName of allCombinedCompanyNames) {
+    const coData = combinedReport[companyName];
+    
+    // Only create a combined report if there were multiple sites
+    const sitesForThisCompany = allReportKeys.filter(key => key.startsWith(companyName + " - ")).length;
+    if (sitesForThisCompany > 1) { 
+      const newSheetName = REPORT_TAB_PREFIX + companyName.replace(/[\/\\?*\[\]]/g, '-') + " (Combined)";
+      let newSheet = ss.insertSheet(newSheetName);
+
+      // Run AI Correction on this combined data batch
+      const aiResult = runAICorrection(coData.notes, companyName + " (Combined)");
+      coData.notes = aiResult.correctedNotesData;
+      
+      // Write the formatted data to the new tab
+      writeReportToTab(newSheet, coData, companyName + " (Combined)", monthStr, aiResult.aiCorrectionFailed);
+    }
+  }
+  
+  SpreadsheetApp.getUi().alert("Master Report Generated! New tabs have been created for each company site and combined totals.");
 }
 
